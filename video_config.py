@@ -6,7 +6,7 @@ import os
 # ============================================================================
 
 # Choose your AI model provider: "anthropic" or "groq"
-MODEL_PROVIDER = "groq"  # Change this to switch providers globally
+MODEL_PROVIDER = "anthropic"  # Change this to switch providers globally
 
 # Model configurations for each provider
 MODEL_CONFIG = {

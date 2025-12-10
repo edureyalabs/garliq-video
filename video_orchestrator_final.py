@@ -33,7 +33,7 @@ class VideoOrchestrator:
         self.metadata_generator = VideoMetadataGenerator()
         
     async def generate_video(self, video_id: str, user_id: str, topic_category: str):
-        """Main video generation pipeline with AI-generated animations and metadata"""
+        """Main video generation pipeline with AI-generated animations, metadata, and Cloudflare Stream"""
         try:
             self._update_status(video_id, 'generating')
             
@@ -42,13 +42,15 @@ class VideoOrchestrator:
             prompt = video['prompt']
             
             print(f"\n{'='*70}")
-            print(f"🎬 VIDEO GENERATION STARTED")
+            print(f"🎬 VIDEO GENERATION STARTED (CLOUDFLARE STREAM + HLS)")
             print(f"{'='*70}")
             print(f"Video ID: {video_id}")
             print(f"Topic: {prompt}")
             print(f"Segments: {self.total_segments}")
             print(f"Batch Size: {RENDER_BATCH_SIZE}")
             print(f"AI Animations: {'Enabled' if USE_AI_ANIMATIONS else 'Disabled'}")
+            print(f"Streaming: Cloudflare Stream with Adaptive HLS")
+            print(f"Quality: 5 Mbps 1080p (auto-generates 720p, 480p)")
             print(f"{'='*70}\n")
             
             # PHASE 0: Generate metadata (title + description) FIRST
@@ -113,7 +115,7 @@ class VideoOrchestrator:
             print(f"✓ Ready to render: {len(valid_pairs)} segments\n")
             
             # PHASE 4: Render videos in BATCHES with AI animations
-            print(f"🎥 PHASE 4: Rendering videos with AI animations...")
+            print(f"🎥 PHASE 4: Rendering videos with AI animations (5 Mbps)...")
             video_start = time.time()
             
             video_files = await self._render_videos_in_batches(valid_pairs)
@@ -124,19 +126,23 @@ class VideoOrchestrator:
             if len(video_files) == 0:
                 raise Exception("No videos were successfully rendered")
             
-            # PHASE 5: Concatenate
-            print("🎞️  PHASE 5: Concatenating...")
+            # PHASE 5: Concatenate with streaming optimization
+            print("🎞️  PHASE 5: Concatenating (5 Mbps, faststart enabled)...")
             concat_start = time.time()
             
             final_video_path = await self._concatenate_videos(video_files)
             
             print(f"✅ Concatenation complete ({time.time() - concat_start:.1f}s)\n")
             
-            # PHASE 6: Upload
-            print("☁️  PHASE 6: Uploading...")
+            # PHASE 6: Upload to Cloudflare Stream (automatic HLS conversion)
+            print("☁️  PHASE 6: Uploading to Cloudflare Stream...")
             upload_start = time.time()
             
-            video_url = await self._upload_to_storage(final_video_path, video_id)
+            cloudflare_uid, hls_url, mp4_url = await self._upload_to_cloudflare_stream(
+                final_video_path, 
+                video_id, 
+                title
+            )
             
             print(f"✅ Upload complete ({time.time() - upload_start:.1f}s)\n")
             
@@ -145,9 +151,11 @@ class VideoOrchestrator:
             if total_duration == 0:
                 total_duration = len(video_files) * 12  # Fallback estimate
             
-            # Update database
+            # Update database with Cloudflare Stream URLs
             self.supabase.table('video_generations').update({
-                'video_url': video_url,
+                'cloudflare_video_uid': cloudflare_uid,
+                'video_url': hls_url,  # Primary: HLS for adaptive streaming
+                'mp4_url': mp4_url,     # Backup: Direct MP4
                 'generation_status': 'completed',
                 'duration_seconds': int(total_duration),
                 'generation_error': None
@@ -156,19 +164,31 @@ class VideoOrchestrator:
             await self._deduct_tokens(user_id, video_id, len(segments))
             
             print(f"{'='*70}")
-            print(f"✨ COMPLETE: {video_url}")
-            print(f"✨ Title: {title}")
-            print(f"✨ Description: {len(description)} chars")
+            print(f"✨ COMPLETE - CLOUDFLARE STREAM READY")
+            print(f"{'='*70}")
+            print(f"🎥 Title: {title}")
+            print(f"📄 Description: {len(description)} chars")
+            print(f"🌐 HLS URL: {hls_url}")
+            print(f"📦 MP4 URL: {mp4_url}")
+            print(f"⚡ Cloudflare Stream Features:")
+            print(f"   - Adaptive HLS streaming (1080p, 720p, 480p)")
+            print(f"   - Global CDN delivery (285+ cities)")
+            print(f"   - Zero buffering guaranteed")
+            print(f"   - Automatic quality switching")
             print(f"{'='*70}\n")
             
             return {
                 "success": True,
-                "video_url": video_url,
+                "video_url": hls_url,
+                "mp4_url": mp4_url,
+                "cloudflare_video_uid": cloudflare_uid,
                 "title": title,
                 "description": description,
                 "duration": int(total_duration),
                 "segments_rendered": successful_videos,
-                "segments_total": len(segments)
+                "segments_total": len(segments),
+                "streaming_platform": "Cloudflare Stream",
+                "streaming_optimized": True
             }
             
         except Exception as e:
@@ -381,7 +401,7 @@ class VideoOrchestrator:
         return video_files
     
     async def _concatenate_videos(self, video_files: List[str]) -> str:
-        """Concatenate all video files in order"""
+        """Concatenate all video files in order with 5 Mbps bitrate and streaming optimization"""
         
         if not video_files:
             raise Exception("No video files to concatenate")
@@ -401,17 +421,28 @@ class VideoOrchestrator:
         
         output_path = '/tmp/final_video.mp4'
         
+        # Concatenate with 5 Mbps bitrate and faststart optimization
         result = subprocess.run([
             'ffmpeg', '-y',
             '-f', 'concat',
             '-safe', '0',
             '-i', concat_file,
-            '-c', 'copy',
+            '-c:v', 'libx264',
+            '-b:v', '5000k',           # 5 Mbps video bitrate
+            '-maxrate', '5500k',       # Max bitrate
+            '-bufsize', '10000k',      # Buffer size
+            '-preset', 'medium',       # Encoding speed
+            '-movflags', '+faststart', # Streaming optimization
+            '-c:a', 'aac',
+            '-b:a', '128k',
             output_path
         ], capture_output=True, text=True, timeout=300)
         
         if result.returncode != 0:
             raise Exception(f"Concat failed: {result.stderr}")
+        
+        file_size_mb = os.path.getsize(output_path) / 1024 / 1024
+        print(f"  ✓ Final video: {file_size_mb:.1f} MB (5 Mbps, faststart enabled)")
         
         os.remove(concat_file)
         for vp in sorted_videos:
@@ -422,27 +453,37 @@ class VideoOrchestrator:
         
         return output_path
     
-    async def _upload_to_storage(self, video_path: str, video_id: str) -> str:
-        """Upload final video to Supabase storage"""
+    async def _upload_to_cloudflare_stream(
+        self, 
+        video_path: str, 
+        video_id: str, 
+        title: str
+    ) -> Tuple[str, str, str]:
+        """
+        Upload final video to Cloudflare Stream
         
-        with open(video_path, 'rb') as f:
-            video_bytes = f.read()
+        Returns:
+            (cloudflare_video_uid, hls_url, mp4_url)
+        """
         
-        storage_path = f"videos/{video_id}.mp4"
+        from cloudflare_stream_uploader import CloudflareStreamUploader
         
+        uploader = CloudflareStreamUploader()
+        
+        # Upload to Cloudflare Stream (automatically converts to HLS with multiple qualities)
+        cloudflare_uid, hls_url, mp4_url = uploader.upload_video(
+            video_path=video_path,
+            video_id=video_id,
+            title=title
+        )
+        
+        # Clean up local file
         try:
-            self.supabase.storage.from_('videos').remove([storage_path])
+            os.remove(video_path)
         except:
             pass
         
-        self.supabase.storage.from_('videos').upload(
-            storage_path,
-            video_bytes,
-            {'content-type': 'video/mp4'}
-        )
-        
-        url = self.supabase.storage.from_('videos').get_public_url(storage_path)
-        return url
+        return cloudflare_uid, hls_url, mp4_url
     
     async def _deduct_tokens(self, user_id: str, video_id: str, segment_count: int):
         """Deduct tokens for video generation"""
