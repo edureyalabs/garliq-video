@@ -20,6 +20,7 @@ from video_config import (
     ANIMATION_GENERATION_TIMEOUT
 )
 from video_animation_agent import VideoAnimationAgent
+from video_metadata_generator import VideoMetadataGenerator
 
 
 class VideoOrchestrator:
@@ -29,9 +30,10 @@ class VideoOrchestrator:
         self.groq_api_key = os.getenv('GROQ_API_KEY')
         self.total_segments = TOTAL_SEGMENTS
         self.animation_agent = VideoAnimationAgent()
+        self.metadata_generator = VideoMetadataGenerator()
         
     async def generate_video(self, video_id: str, user_id: str, topic_category: str):
-        """Main video generation pipeline with AI-generated animations"""
+        """Main video generation pipeline with AI-generated animations and metadata"""
         try:
             self._update_status(video_id, 'generating')
             
@@ -48,6 +50,32 @@ class VideoOrchestrator:
             print(f"Batch Size: {RENDER_BATCH_SIZE}")
             print(f"AI Animations: {'Enabled' if USE_AI_ANIMATIONS else 'Disabled'}")
             print(f"{'='*70}\n")
+            
+            # PHASE 0: Generate metadata (title + description) FIRST
+            print("📝 PHASE 0: Generating metadata...")
+            metadata_start = time.time()
+            
+            # Generate title (if not already set)
+            if not video.get('title') or video.get('title') == 'Educational Video':
+                print("  🏷️  Generating title...")
+                title = self.metadata_generator.generate_title(prompt)
+                print(f"  ✓ Title: {title}")
+            else:
+                title = video['title']
+                print(f"  ✓ Using existing title: {title}")
+            
+            # Generate description
+            print("  📄 Generating description...")
+            description = self.metadata_generator.generate_description(prompt, title)
+            print(f"  ✓ Description: {len(description)} characters")
+            
+            # Update database with metadata
+            self.supabase.table('video_generations').update({
+                'title': title,
+                'description': description
+            }).eq('id', video_id).execute()
+            
+            print(f"✅ Metadata complete ({time.time() - metadata_start:.1f}s)\n")
             
             # PHASE 1: Generate script with CrewAI
             print("📝 PHASE 1: Generating script with CrewAI...")
@@ -129,11 +157,15 @@ class VideoOrchestrator:
             
             print(f"{'='*70}")
             print(f"✨ COMPLETE: {video_url}")
+            print(f"✨ Title: {title}")
+            print(f"✨ Description: {len(description)} chars")
             print(f"{'='*70}\n")
             
             return {
                 "success": True,
                 "video_url": video_url,
+                "title": title,
+                "description": description,
                 "duration": int(total_duration),
                 "segments_rendered": successful_videos,
                 "segments_total": len(segments)

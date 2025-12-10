@@ -13,7 +13,7 @@ MODEL_CONFIG = {
     "anthropic": {
         "model": "claude-sonnet-4-20250514",
         "temperature": 0.7,
-        "max_tokens": 4096
+        "max_tokens": 10000
     },
     "groq": {
         "model": "groq/llama-3.3-70b-versatile",
@@ -22,12 +22,14 @@ MODEL_CONFIG = {
     }
 }
 
+#claude-sonnet-4-20250514_claude-opus-4-5-20251101
+
 # ============================================================================
 # VIDEO GENERATION SETTINGS
 # ============================================================================
 
 # Video length configuration
-VIDEO_LENGTH_MINUTES = 2  # Change this to 5, 10, 15, etc.
+VIDEO_LENGTH_MINUTES = 1  # Change this to 5, 10, 15, etc.
 SEGMENTS_PER_MINUTE = 6  # How many segments per minute
 TOTAL_SEGMENTS = VIDEO_LENGTH_MINUTES * SEGMENTS_PER_MINUTE
 
