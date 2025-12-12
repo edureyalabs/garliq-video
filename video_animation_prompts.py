@@ -1,439 +1,414 @@
 # video_animation_prompts.py
 
-ANIMATION_CODER_ROLE = """You are an Elite Educational Animation Developer and Creative Visual Designer"""
+ANIMATION_CODER_ROLE = """Expert HTML/CSS/JavaScript animator who creates educational video segments"""
 
-ANIMATION_CODER_GOAL = """Create stunning, educational, broadcast-quality animations that perfectly visualize concepts for video segments"""
+ANIMATION_CODER_GOAL = """Create professional animated HTML files with text overlays and background effects using GSAP"""
 
-ANIMATION_CODER_BACKSTORY = """You are a world-class creative developer specializing in educational content visualization. You have mastered:
+ANIMATION_CODER_BACKSTORY = """You create educational animations similar to Kurzgesagt, TED-Ed, and Khan Academy videos. Your animations feature large text overlays with smooth GSAP animations and beautiful background effects."""
 
-- HTML5 Canvas 2D rendering and particle systems
-- SVG graphics, animations, and morphing techniques
-- CSS3 animations, transitions, and keyframe sequences
-- GSAP (GreenSock) for professional-grade motion design
-- JavaScript animation libraries and frameworks
-- Data visualization and infographics
-- Kinetic typography and text animations
-- Icon animation and micro-interactions
-- Color theory and visual hierarchy
-- Educational content design principles
+ANIMATION_GENERATION_TASK_TEMPLATE = """Create an animated HTML file for this educational video segment.
 
-Your animations have been featured in:
-- Top educational YouTube channels (millions of views)
-- Professional explainer video companies
-- Online learning platforms (Coursera, Khan Academy style)
-- Documentary productions and broadcast media
+SEGMENT INFO:
+- Narration: "{segment_text}"
+- Visual: "{visual_hint}"
+- Segment Number: {segment_index}
 
-You create animations that are:
-✨ Visually stunning and memorable
-📚 Educationally effective and clear
-🎨 Professionally designed with perfect aesthetics
-⚡ Smooth, performant (60 FPS guaranteed)
-🎯 Contextually appropriate for the topic
-💡 Creative yet purposeful
+CRITICAL REQUIREMENTS - YOUR HTML MUST LOOK LIKE THIS:
 
-You write clean, efficient, production-ready code that renders flawlessly."""
+1. LOAD THESE LIBRARIES (copy exactly):
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+```
 
-ANIMATION_GENERATION_TASK_TEMPLATE = """Create a complete, broadcast-quality educational animation for this video segment:
+2. CREATE TEXT OVERLAYS (main content):
+```html
+<div class="overlay">
+  <div class="content-container">
+    <h1 class="main-title">YOUR TITLE HERE</h1>
+    <p class="subtitle">Your subtitle here</p>
+    
+    <!-- For lists/bullets: -->
+    <ul class="key-points">
+      <li>
+        <i data-lucide="check-circle" class="icon"></i>
+        <span>Point 1</span>
+      </li>
+      <li>
+        <i data-lucide="zap" class="icon"></i>
+        <span>Point 2</span>
+      </li>
+    </ul>
+    
+    <!-- For stats/numbers: -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">100</div>
+        <div class="stat-label">Label</div>
+      </div>
+    </div>
+  </div>
+</div>
+```
 
-╔════════════════════════════════════════════════════════════════════╗
-║                        SEGMENT INFORMATION                          ║
-╚════════════════════════════════════════════════════════════════════╝
+3. STYLE WITH GLASS EFFECT (copy exactly):
+```css
+.content-container {{
+  max-width: 1400px;
+  padding: 50px 60px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}}
 
-📝 NARRATION TEXT (what the voice says):
-"{segment_text}"
+.main-title {{
+  font-size: 4rem;
+  font-weight: 800;
+  color: white;
+  text-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}}
 
-🎨 VISUAL CONCEPT (what to visualize):
-"{visual_hint}"
+.subtitle {{
+  font-size: 1.8rem;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.9);
+}}
+```
 
-📊 SEGMENT NUMBER: {segment_index}
-⏱️  DURATION: 10-15 seconds
-📐 RESOLUTION: 1920×1080 (Full HD)
-🎬 FRAME RATE: 30 FPS (render at 60 FPS for smoothness)
+4. ANIMATE WITH GSAP (copy exactly):
+```javascript
+// Title entrance
+gsap.from('.main-title', {{
+  scale: 0.5,
+  opacity: 0,
+  duration: 1.2,
+  ease: 'elastic.out(1, 0.5)',
+  delay: 0.3
+}});
 
-╔════════════════════════════════════════════════════════════════════╗
-║                    TECHNICAL REQUIREMENTS                           ║
-╚════════════════════════════════════════════════════════════════════╝
+// Subtitle entrance
+gsap.from('.subtitle', {{
+  y: 30,
+  opacity: 0,
+  duration: 0.8,
+  ease: 'power3.out',
+  delay: 0.8
+}});
 
-🎥 VIDEO CONTEXT:
-- This is ONE SEGMENT of an educational explainer video
-- Audio narration plays over your animation (you don't handle audio)
-- Animation must loop smoothly for 10-15 seconds
-- Will be recorded via MediaRecorder (canvas.captureStream)
-- Output: WebM → MP4 conversion → Cloudflare Stream
+// Bullet points (staggered)
+gsap.from('.key-points li', {{
+  x: -30,
+  opacity: 0,
+  duration: 0.6,
+  stagger: 0.15,
+  ease: 'power3.out',
+  delay: 1.2
+}});
 
-📐 OUTPUT SPECIFICATIONS:
-- HTML document with inline styles and scripts
-- Canvas element: <canvas id="canvas" width="1920" height="1080">
-- Background must be opaque (no transparency)
-- Must be self-contained (no external file dependencies)
+// Initialize Lucide icons
+if (typeof lucide !== 'undefined') lucide.createIcons();
+```
 
-╔════════════════════════════════════════════════════════════════════╗
-║                  YOUR CREATIVE TOOLBOX (CHOOSE WISELY)              ║
-╚════════════════════════════════════════════════════════════════════╝
+5. ADD BACKGROUND (Canvas or CSS):
+```javascript
+// Simple particle background
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
 
-You have FULL AUTONOMY to choose the best tools for this specific segment.
+class Particle {{
+  constructor() {{
+    this.x = Math.random() * 1920;
+    this.y = Math.random() * 1080;
+    this.vx = (Math.random() - 0.5) * 2;
+    this.vy = (Math.random() - 0.5) * 2;
+  }}
+  update() {{
+    this.x += this.vx;
+    this.y += this.vy;
+    if (this.x < 0 || this.x > 1920) this.vx *= -1;
+    if (this.y < 0 || this.y > 1080) this.vy *= -1;
+  }}
+  draw() {{
+    ctx.fillStyle = 'rgba(0, 212, 255, 0.5)';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }}
+}}
 
-✅ ALWAYS AVAILABLE:
-├─ HTML5 Canvas 2D Context
-│  └─ Use for: dynamic graphics, particles, drawings, effects
-├─ Inline SVG
-│  └─ Use for: shapes, icons, illustrations, diagrams
-├─ CSS3 (animations, transitions, transforms)
-│  └─ Use for: smooth motion, fades, scales, rotations
-├─ Vanilla JavaScript
-│  └─ Use for: animation loops, math, logic, interactivity
-└─ RequestAnimationFrame loop
-   └─ Use for: frame-by-frame animation control
+const particles = Array(100).fill().map(() => new Particle());
 
-✅ OPTIONAL LIBRARIES (use when they add value):
-├─ GSAP (GreenSock) → CDN: https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js
-│  └─ Use for: complex timelines, advanced easing, sequencing
-├─ Lucide Icons → CDN: https://unpkg.com/lucide@latest/dist/umd/lucide.js
-│  └─ Use for: professional UI icons, business icons, tech icons
-├─ Chart.js → CDN: https://cdn.jsdelivr.net/npm/chart.js
-│  └─ Use for: animated charts, graphs, data visualization
-└─ Anime.js → CDN: https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js
-   └─ Use for: SVG morphing, path animations, complex sequences
+function animate() {{
+  ctx.clearRect(0, 0, 1920, 1080);
+  ctx.fillStyle = '#0a0e27';
+  ctx.fillRect(0, 0, 1920, 1080);
+  particles.forEach(p => {{ p.update(); p.draw(); }});
+  requestAnimationFrame(animate);
+}}
+animate();
+```
 
-❌ DO NOT USE:
-- Three.js (removed from stack)
-- External images/videos
-- Web fonts that slow loading
-- localStorage/sessionStorage (not supported)
-- Audio/video elements
+6. REQUIRED RECORDING FUNCTION (copy exactly):
+```javascript
+window.startRecording = function() {{
+  return new Promise((resolve) => {{
+    setTimeout(() => {{
+      window.recordingComplete = true;
+      resolve();
+    }}, 15000);
+  }});
+}};
+```
 
-╔════════════════════════════════════════════════════════════════════╗
-║                    ANIMATION DESIGN GUIDELINES                      ║
-╚════════════════════════════════════════════════════════════════════╝
+WHAT TO CREATE:
 
-🎨 VISUAL STYLE SELECTION:
-Choose the most appropriate style for THIS specific segment:
+Based on the segment text and visual hint:
+- If it's an intro (segment 0): Big title + subtitle + dramatic entrance
+- If it mentions numbers/stats: Create stat cards with numbers
+- If it's a list/steps: Create bullet points with icons
+- Otherwise: Title + description + background animation
 
-1. KINETIC TYPOGRAPHY (text-focused segments)
-   - Animated text entrance/exit
-   - Word-by-word reveals
-   - Typewriter effects
-   - Text morphing and scaling
-   - Use: titles, key concepts, quotes
+COLOR SCHEMES (pick one based on topic):
+- Technology: Background #0a0e27, Primary #00d4ff, Secondary #8b5cf6
+- Business: Background #0f1419, Primary #f59e0b, Secondary #1e40af  
+- Health: Background #0a1a0f, Primary #22c55e, Secondary #3b82f6
+- Education: Background #1a1410, Primary #f97316, Secondary #06b6d4
 
-2. GEOMETRIC ABSTRACTION (concept explanation)
-   - Shapes, lines, grids, patterns
-   - Morphing between states
-   - Particle formations
-   - Use: abstract concepts, transitions
+EXAMPLE OUTPUT:
 
-3. ICON ANIMATIONS (feature/benefit lists)
-   - Lucide icons with motion
-   - Icon grids and sequences
-   - Scale, rotate, fade effects
-   - Use: lists, features, categories
-
-4. DATA VISUALIZATION (statistics, comparisons)
-   - Animated charts/graphs
-   - Bar charts growing
-   - Pie charts filling
-   - Line graphs drawing
-   - Use: data, stats, growth, trends
-
-5. INFOGRAPHIC STYLE (process/workflow)
-   - Step-by-step diagrams
-   - Flowcharts with arrows
-   - Timeline animations
-   - Use: processes, tutorials, how-to
-
-6. ILLUSTRATIVE (storytelling)
-   - SVG illustrations
-   - Scene compositions
-   - Character-like elements
-   - Use: narratives, examples, scenarios
-
-7. PARTICLE SYSTEMS (dynamic/energetic)
-   - Canvas-based particles
-   - Flow fields, forces
-   - Attraction/repulsion
-   - Use: energy, networks, connections
-
-🎨 COLOR PALETTE SELECTION:
-Choose colors that match the topic and segment mood:
-
-TOPIC-BASED PALETTES:
-├─ Science/Technology: #00d4ff, #8b5cf6, #ffffff (cyan, purple, white)
-├─ Business/Finance: #f59e0b, #1e40af, #ffffff (gold, navy, white)
-├─ Health/Medical: #22c55e, #3b82f6, #ffffff (green, blue, white)
-├─ Education/Learning: #f97316, #06b6d4, #fbbf24 (orange, cyan, yellow)
-├─ Nature/Environment: #10b981, #84cc16, #fbbf24 (green, lime, yellow)
-├─ Creative/Arts: #ec4899, #8b5cf6, #f59e0b (pink, purple, orange)
-└─ General/Universal: #3b82f6, #8b5cf6, #ec4899 (blue, purple, pink)
-
-MOOD-BASED INTENSITY:
-├─ Introduction: Bright, vibrant, attention-grabbing
-├─ Explanation: Clear, balanced, focused
-├─ Emphasis: Bold, high-contrast, dramatic
-└─ Conclusion: Warm, satisfying, complete
-
-🎭 ANIMATION TIMING & PACING:
-- Intro (0-2s): Quick, attention-grabbing entrance
-- Main (2-12s): Steady, informative, engaging
-- Outro (12-15s): Smooth, satisfying exit/loop
-
-Use GSAP easings for professional motion:
-- Power3.out (smooth deceleration)
-- Elastic.out (bouncy, playful)
-- Back.out (slight overshoot)
-- Sine.inOut (gentle, natural)
-
-╔════════════════════════════════════════════════════════════════════╗
-║                    CODE STRUCTURE REQUIREMENTS                      ║
-╚════════════════════════════════════════════════════════════════════╝
-
-Return a COMPLETE, SELF-CONTAINED HTML document:
-
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Segment {segment_index}</title>
+  <meta charset="UTF-8">
+  <title>Segment {segment_index}</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+    body {{ 
+      font-family: 'Poppins', sans-serif;
+      width: 1920px; 
+      height: 1080px;
+      overflow: hidden;
+      background: #0a0e27;
+      position: relative;
+    }}
     
-    <!-- OPTIONAL: Load libraries you need (only if you use them) -->
-    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script> -->
-    <!-- <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script> -->
+    #canvas {{
+      position: absolute;
+      top: 0; left: 0;
+      width: 1920px; height: 1080px;
+      z-index: 1;
+    }}
     
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        
-        body {{
-            width: 1920px;
-            height: 1080px;
-            overflow: hidden;
-            background: #000000; /* Set appropriate background color */
-            font-family: 'Arial', sans-serif;
-        }}
-        
-        #canvas {{
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 1920px;
-            height: 1080px;
-        }}
-        
-        /* Add your CSS animations, keyframes, etc. */
-        @keyframes fadeIn {{
-            from {{ opacity: 0; }}
-            to {{ opacity: 1; }}
-        }}
-        
-        /* Your additional styles here */
-    </style>
+    .overlay {{
+      position: absolute;
+      top: 0; left: 0;
+      width: 1920px; height: 1080px;
+      z-index: 10;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 60px;
+    }}
+    
+    .content-container {{
+      max-width: 1400px;
+      width: 100%;
+      padding: 50px 60px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }}
+    
+    .main-title {{
+      font-size: 4rem;
+      font-weight: 800;
+      color: white;
+      text-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      margin-bottom: 20px;
+    }}
+    
+    .subtitle {{
+      font-size: 1.8rem;
+      font-weight: 300;
+      color: rgba(255, 255, 255, 0.9);
+      line-height: 1.6;
+    }}
+    
+    .key-points {{
+      list-style: none;
+      margin-top: 30px;
+      text-align: left;
+    }}
+    
+    .key-points li {{
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      padding: 20px;
+      margin-bottom: 15px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 15px;
+      backdrop-filter: blur(10px);
+      border: 2px solid rgba(255, 255, 255, 0.15);
+    }}
+    
+    .key-points .icon {{
+      width: 24px;
+      height: 24px;
+      color: #00d4ff;
+    }}
+    
+    .stats-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 25px;
+      margin-top: 30px;
+    }}
+    
+    .stat-card {{
+      padding: 30px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }}
+    
+    .stat-number {{
+      font-size: 3rem;
+      font-weight: 800;
+      color: #00d4ff;
+      margin-bottom: 10px;
+    }}
+    
+    .stat-label {{
+      font-size: 1rem;
+      color: rgba(255, 255, 255, 0.8);
+    }}
+  </style>
 </head>
 <body>
-    <!-- Primary canvas for dynamic rendering -->
-    <canvas id="canvas" width="1920" height="1080"></canvas>
+  <canvas id="canvas" width="1920" height="1080"></canvas>
+  
+  <div class="overlay">
+    <div class="content-container">
+      <h1 class="main-title">YOUR TITLE HERE</h1>
+      <p class="subtitle">Your subtitle or description here</p>
+      
+      <ul class="key-points">
+        <li>
+          <i data-lucide="check-circle" class="icon"></i>
+          <span>First key point</span>
+        </li>
+        <li>
+          <i data-lucide="zap" class="icon"></i>
+          <span>Second key point</span>
+        </li>
+        <li>
+          <i data-lucide="star" class="icon"></i>
+          <span>Third key point</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+  
+  <script>
+    // Canvas background
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
     
-    <!-- OPTIONAL: Add SVG illustrations, text overlays, icons -->
-    <!-- <div class="overlay">
-        <svg>...</svg>
-        <h1>Text Content</h1>
-        <i data-lucide="icon-name"></i>
-    </div> -->
+    class Particle {{
+      constructor() {{
+        this.x = Math.random() * 1920;
+        this.y = Math.random() * 1080;
+        this.vx = (Math.random() - 0.5) * 2;
+        this.vy = (Math.random() - 0.5) * 2;
+        this.size = Math.random() * 3 + 1;
+      }}
+      update() {{
+        this.x += this.vx;
+        this.y += this.vy;
+        if (this.x < 0 || this.x > 1920) this.vx *= -1;
+        if (this.y < 0 || this.y > 1080) this.vy *= -1;
+      }}
+      draw() {{
+        ctx.fillStyle = 'rgba(0, 212, 255, 0.5)';
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+      }}
+    }}
     
-    <script>
-        // ============================================
-        // ANIMATION CODE
-        // ============================================
-        
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const WIDTH = 1920;
-        const HEIGHT = 1080;
-        const FPS = 60;
-        const DURATION_MS = 15000; // 15 seconds
-        
-        // Initialize Lucide icons if you used them
-        // if (typeof lucide !== 'undefined') lucide.createIcons();
-        
-        // Your animation setup here
-        // (Initialize variables, objects, particles, etc.)
-        
-        // Animation loop (REQUIRED)
-        let startTime = null;
-        let isRecording = false;
-        
-        function animate(timestamp) {{
-            if (!startTime) startTime = timestamp;
-            const elapsed = timestamp - startTime;
-            const time = elapsed / 1000; // time in seconds
-            
-            // Clear canvas each frame
-            ctx.clearRect(0, 0, WIDTH, HEIGHT);
-            
-            // Draw background
-            ctx.fillStyle = '#000000'; // Your background color
-            ctx.fillRect(0, 0, WIDTH, HEIGHT);
-            
-            // ============================================
-            // YOUR ANIMATION LOGIC HERE
-            // ============================================
-            // Use 'time' variable for time-based animations
-            // Loop when time > 15 seconds
-            
-            // Example:
-            // ctx.fillStyle = '#00d4ff';
-            // ctx.fillRect(100, 100, 200, 200);
-            
-            // Continue animation loop
-            requestAnimationFrame(animate);
-        }}
-        
-        // Start animation immediately
-        requestAnimationFrame(animate);
-        
-        // Recording interface (REQUIRED - do not modify)
-        window.startRecording = function() {{
-            return new Promise((resolve) => {{
-                isRecording = true;
-                console.log('Recording started');
-                
-                // Wait for duration
-                setTimeout(() => {{
-                    isRecording = false;
-                    window.recordingComplete = true;
-                    console.log('Recording complete');
-                    resolve();
-                }}, DURATION_MS);
-            }});
-        }};
-        
-        console.log('Animation ready');
-    </script>
+    const particles = Array(100).fill().map(() => new Particle());
+    
+    function animate() {{
+      ctx.clearRect(0, 0, 1920, 1080);
+      ctx.fillStyle = '#0a0e27';
+      ctx.fillRect(0, 0, 1920, 1080);
+      particles.forEach(p => {{ p.update(); p.draw(); }});
+      requestAnimationFrame(animate);
+    }}
+    animate();
+    
+    // GSAP animations
+    gsap.from('.main-title', {{
+      scale: 0.5,
+      opacity: 0,
+      duration: 1.2,
+      ease: 'elastic.out(1, 0.5)',
+      delay: 0.3
+    }});
+    
+    gsap.from('.subtitle', {{
+      y: 30,
+      opacity: 0,
+      duration: 0.8,
+      ease: 'power3.out',
+      delay: 0.8
+    }});
+    
+    gsap.from('.key-points li', {{
+      x: -30,
+      opacity: 0,
+      duration: 0.6,
+      stagger: 0.15,
+      ease: 'power3.out',
+      delay: 1.2
+    }});
+    
+    // Initialize icons
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    
+    // Recording interface
+    window.startRecording = function() {{
+      return new Promise((resolve) => {{
+        setTimeout(() => {{
+          window.recordingComplete = true;
+          resolve();
+        }}, 15000);
+      }});
+    }};
+  </script>
 </body>
 </html>
+```
 
-╔════════════════════════════════════════════════════════════════════╗
-║                      DECISION-MAKING PROCESS                        ║
-╚════════════════════════════════════════════════════════════════════╝
-
-STEP 1: ANALYZE THE SEGMENT
-- What is the narration talking about?
-- What is the key concept to visualize?
-- What mood/tone is appropriate?
-- Is this intro, body, or conclusion?
-
-STEP 2: CHOOSE YOUR APPROACH
-- Which animation style fits best? (typography, geometric, data viz, etc.)
-- What colors match the topic and mood?
-- Do I need libraries (GSAP, Lucide) or is vanilla JS enough?
-- Canvas animation, SVG animation, or hybrid?
-
-STEP 3: DESIGN THE VISUALS
-- What specific elements will I draw/animate?
-- How will they move/transform over time?
-- What's the visual hierarchy (what's most important)?
-- How do I make it loop smoothly?
-
-STEP 4: IMPLEMENT WITH PRECISION
-- Write clean, organized code
-- Use meaningful variable names
-- Add comments for complex logic
-- Test timing and pacing mentally
-- Ensure 60 FPS performance
-
-╔════════════════════════════════════════════════════════════════════╗
-║                          QUALITY CHECKLIST                          ║
-╚════════════════════════════════════════════════════════════════════╝
-
-Before submitting your code, verify:
-
-✅ Visual Quality:
-   □ Colors are vibrant and professional
-   □ Visual hierarchy is clear
-   □ No clutter or visual noise
-   □ Matches educational explainer style
-   □ Looks broadcast-ready (TV/YouTube quality)
-
-✅ Animation Quality:
-   □ Smooth 60 FPS motion
-   □ Natural easing (not linear)
-   □ Loops seamlessly at 15 seconds
-   □ No jarring transitions
-   □ Engaging throughout entire duration
-
-✅ Technical Quality:
-   □ Valid HTML structure
-   □ Canvas is 1920×1080
-   □ Animation loop uses requestAnimationFrame
-   □ startRecording() function is present
-   □ No console errors
-   □ Renders in <300ms
-
-✅ Educational Value:
-   □ Visualizes the narration concept
-   □ Enhances understanding (not distracting)
-   □ Clear and focused message
-   □ Appropriate for target audience
-
-╔════════════════════════════════════════════════════════════════════╗
-║                            EXAMPLES                                 ║
-╚════════════════════════════════════════════════════════════════════╝
-
-EXAMPLE 1: Intro Segment
-Narration: "Welcome to this guide on renewable energy. Today we explore sustainable power sources."
-Approach: Kinetic typography + particle system
-Tools: Canvas + vanilla JS
-Visual: Text "RENEWABLE ENERGY" with particles forming wind turbines
-
-EXAMPLE 2: Concept Explanation
-Narration: "Solar panels convert sunlight into electricity through photovoltaic cells."
-Approach: Animated diagram with arrows
-Tools: SVG + CSS animations + Lucide icons
-Visual: Sun icon → solar panel diagram → house with electricity flow
-
-EXAMPLE 3: Data Segment
-Narration: "Solar energy capacity grew 300% in the last decade, from 50 to 200 gigawatts."
-Approach: Animated bar chart
-Tools: Canvas + Chart.js or custom drawing
-Visual: Bar chart animating upward with labels
-
-EXAMPLE 4: Process Explanation
-Narration: "First, silicon absorbs photons. Second, electrons flow. Third, current is generated."
-Approach: Step-by-step infographic
-Tools: SVG + GSAP timeline
-Visual: Three-stage diagram with animated highlights
-
-╔════════════════════════════════════════════════════════════════════╗
-║                          OUTPUT FORMAT                              ║
-╚════════════════════════════════════════════════════════════════════╝
-
-Return ONLY the complete HTML code.
-
-DO NOT include:
-❌ Markdown code blocks (no ```html)
-❌ Explanations before or after the code
-❌ Comments about your design choices
-❌ Multiple versions or alternatives
-
-DO include:
-✅ Complete <!DOCTYPE html> to </html>
-✅ All necessary CDN scripts (if you use libraries)
-✅ Inline CSS styles
-✅ Complete JavaScript animation code
-✅ startRecording() function
-✅ Brief code comments for clarity
-
-╔════════════════════════════════════════════════════════════════════╗
-║                        BEGIN GENERATION                             ║
-╚════════════════════════════════════════════════════════════════════╝
-
-Now, using your expertise and creative judgment:
-1. Analyze the segment content and visual hint
-2. Choose the perfect animation approach
-3. Select appropriate tools and techniques
-4. Generate broadcast-quality animation code
-
-Generate the complete HTML animation now:
+NOW CREATE THE HTML:
+- Use the structure shown above
+- Put actual content based on the segment text
+- Choose appropriate layout (title scene, bullet points, or stats)
+- Use GSAP for animations
+- Use Lucide icons where appropriate
+- Include Canvas background with particles
+- Return ONLY the complete HTML (no markdown, no explanations)
 """

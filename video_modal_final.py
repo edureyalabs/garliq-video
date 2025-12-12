@@ -46,6 +46,7 @@ secrets = modal.Secret.from_name("garliq-secrets")
 def render_segment_video(segment: dict, audio_base64: str, audio_duration: float, animation_html: str) -> str:
     """
     Render segment video using AI-generated HTML5 animation code
+    FIXED: Uses Playwright video recording to capture ENTIRE viewport (canvas + HTML)
     
     Args:
         segment: dict with index, text, visual_hint
@@ -58,8 +59,9 @@ def render_segment_video(segment: dict, audio_base64: str, audio_duration: float
     """
     from playwright.sync_api import sync_playwright
     import subprocess
+    import time
     
-    # Import config for timeout
+    # Import config
     import sys
     sys.path.insert(0, '/root')
     from video_config import FFMPEG_TIMEOUT_SECONDS
@@ -70,7 +72,6 @@ def render_segment_video(segment: dict, audio_base64: str, audio_duration: float
     print(f"🎨 [{segment_index}] Starting: {segment_text[:40]}...")
     print(f"    Audio duration: {audio_duration:.1f}s")
     print(f"    Animation HTML: {len(animation_html)} chars")
-    print(f"    Target bitrate: 5 Mbps (normalized encoding)")
     
     # STEP 1: Decode audio from base64
     try:
@@ -89,46 +90,17 @@ def render_segment_video(segment: dict, audio_base64: str, audio_duration: float
     
     # STEP 2: Calculate video duration (minimum 12 seconds)
     video_duration_ms = max(int(audio_duration * 1000) + 1000, 12000)
+    video_duration_sec = video_duration_ms / 1000
     
-    # STEP 3: Prepare HTML with recording infrastructure
-    html_content = animation_html
-    
-    # Check if HTML has required recording interface
-    if 'window.startRecording' not in html_content:
-        print(f"⚠️  [{segment_index}] Adding recording interface to HTML")
-        
-        # Inject recording interface before </script> or before </body>
-        recording_code = f"""
-        
-        // ========== RECORDING INTERFACE (AUTO-INJECTED) ==========
-        window.startRecording = function() {{
-            return new Promise((resolve) => {{
-                console.log('Recording started');
-                setTimeout(() => {{
-                    window.recordingComplete = true;
-                    console.log('Recording complete');
-                    resolve();
-                }}, {video_duration_ms});
-            }});
-        }};
-        """
-        
-        if '</script>' in html_content:
-            html_content = html_content.replace('</script>', recording_code + '\n</script>', 1)
-        elif '</body>' in html_content:
-            html_content = html_content.replace('</body>', f'<script>{recording_code}</script>\n</body>', 1)
-        else:
-            html_content += f'<script>{recording_code}</script>'
-    
-    # Save HTML to file
+    # STEP 3: Save HTML to temp file
     html_path = f'/tmp/segment_{segment_index}.html'
     with open(html_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
+        f.write(animation_html)
     
-    print(f"✓ [{segment_index}] HTML prepared")
+    print(f"✓ [{segment_index}] HTML saved")
     
-    # STEP 4: Render with Playwright
-    webm_path = f'/tmp/segment_{segment_index}.webm'
+    # STEP 4: Render with Playwright - CAPTURE ENTIRE VIEWPORT
+    video_path = f'/tmp/segment_{segment_index}_recording.webm'
     
     try:
         with sync_playwright() as p:
@@ -137,157 +109,149 @@ def render_segment_video(segment: dict, audio_base64: str, audio_duration: float
                 args=[
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
-                    '--disable-web-security',
-                    '--disable-features=IsolateOrigins,site-per-process'
+                    '--disable-features=IsolateOrigins',
+                    '--disable-site-isolation-trials',
+                    '--allow-running-insecure-content',
+                    '--disable-blink-features=AutomationControlled'
                 ]
             )
             
+            # ================================================================
+            # KEY FIX: Enable video recording on the context
+            # This captures ENTIRE viewport (canvas + HTML overlays)
+            # ================================================================
             context = browser.new_context(
                 viewport={'width': 1920, 'height': 1080},
-                device_scale_factor=1
+                device_scale_factor=1,
+                bypass_csp=True,
+                ignore_https_errors=True,
+                record_video_dir='/tmp',  # Enable video recording
+                record_video_size={'width': 1920, 'height': 1080}  # Full HD
             )
             
             page = context.new_page()
             
             # Console logging
-            page.on('console', lambda msg: print(f"  Browser [{msg.type}]: {msg.text}"))
-            page.on('pageerror', lambda err: print(f"  Browser Error: {err}"))
+            def handle_console(msg):
+                text = msg.text
+                if 'chunk' not in text.lower():  # Don't log chunk messages
+                    print(f"  Browser [{msg.type}]: {text}")
+            
+            def handle_error(err):
+                error_msg = str(err)
+                print(f"  Browser Error: {error_msg}")
+            
+            page.on('console', handle_console)
+            page.on('pageerror', handle_error)
             
             # Navigate to HTML
-            page.goto(f'file://{html_path}')
+            print(f"  📄 Loading HTML file...")
+            page.goto(f'file://{html_path}', wait_until='networkidle', timeout=30000)
             
             # Wait for page to be ready
+            print(f"  ⏳ Waiting for page ready...")
             page.wait_for_timeout(2000)
             
-            # Check if animation is ready
+            # Check if GSAP loaded
+            gsap_loaded = page.evaluate("typeof gsap !== 'undefined'")
+            lucide_loaded = page.evaluate("typeof lucide !== 'undefined'")
+            
+            print(f"  📦 Library status:")
+            print(f"     GSAP: {'✅ Loaded' if gsap_loaded else '❌ NOT LOADED'}")
+            print(f"     Lucide: {'✅ Loaded' if lucide_loaded else '❌ NOT LOADED'}")
+            
+            # CRITICAL: If GSAP didn't load, FAIL
+            if not gsap_loaded:
+                context.close()
+                browser.close()
+                raise Exception(f"GSAP library failed to load")
+            
+            # Initialize Lucide icons
             try:
-                page.wait_for_function(
-                    "window.startRecording !== undefined || document.readyState === 'complete'",
-                    timeout=5000
-                )
+                page.evaluate("if (typeof lucide !== 'undefined') lucide.createIcons();")
             except:
-                print(f"⚠️  [{segment_index}] Animation ready check timeout, proceeding anyway")
+                pass
             
-            # Start recording
-            print(f"  📹 Starting recording ({video_duration_ms}ms)...")
+            # Wait for animations to initialize
+            print(f"  ⏳ Waiting for animations to initialize...")
+            page.wait_for_timeout(1000)
             
-            # Method 1: Use built-in canvas recording if available
-            if '<canvas' in html_content.lower():
-                recording_script = f"""
-                    const canvas = document.getElementById('canvas') || document.querySelector('canvas');
-                    if (!canvas) {{
-                        throw new Error('No canvas element found');
-                    }}
-                    
-                    const stream = canvas.captureStream(30); // 30 FPS
-                    const mediaRecorder = new MediaRecorder(stream, {{
-                        mimeType: 'video/webm;codecs=vp9',
-                        videoBitsPerSecond: 5000000
-                    }});
-                    
-                    const chunks = [];
-                    mediaRecorder.ondataavailable = e => {{
-                        if (e.data.size > 0) chunks.push(e.data);
-                    }};
-                    
-                    mediaRecorder.onstop = () => {{
-                        const blob = new Blob(chunks, {{ type: 'video/webm' }});
-                        const reader = new FileReader();
-                        reader.onloadend = () => {{
-                            window.recordedVideoData = reader.result.split(',')[1];
-                            window.recordingComplete = true;
-                        }};
-                        reader.readAsDataURL(blob);
-                    }};
-                    
-                    mediaRecorder.start(100);
-                    
-                    setTimeout(() => {{
-                        mediaRecorder.stop();
-                    }}, {video_duration_ms});
-                """
-                
-                page.evaluate(recording_script)
-            else:
-                # Method 2: CSS/SVG animations - call provided startRecording
-                page.evaluate('if (window.startRecording) window.startRecording()')
+            print(f"  ✓ Animation ready")
             
-            # Wait for recording to complete
-            page.wait_for_function(
-                'window.recordingComplete === true',
-                timeout=int(video_duration_ms) + 10000
-            )
+            # ================================================================
+            # RECORDING: Playwright records entire viewport automatically
+            # ================================================================
+            print(f"  📹 Recording viewport for {video_duration_sec:.1f}s...")
             
-            # Get recorded video data
-            video_data_base64 = page.evaluate('window.recordedVideoData')
+            # Just wait for the duration - Playwright is recording
+            start_time = time.time()
+            page.wait_for_timeout(int(video_duration_ms))
+            actual_duration = time.time() - start_time
             
-            if not video_data_base64:
-                raise Exception("No video data captured")
+            print(f"  ✓ Recording complete ({actual_duration:.1f}s)")
             
-            # Save WebM
-            with open(webm_path, 'wb') as f:
-                f.write(base64.b64decode(video_data_base64))
-            
+            # Close page to finalize video
             page.close()
             context.close()
             browser.close()
         
-        print(f"✓ [{segment_index}] WebM captured: {os.path.getsize(webm_path)} bytes")
+        # ================================================================
+        # Get the recorded video file
+        # Playwright saves it with a random name in /tmp
+        # ================================================================
+        import glob
+        import shutil
+        
+        # Find the most recently created .webm file
+        webm_files = glob.glob('/tmp/*.webm')
+        if not webm_files:
+            raise Exception("No video file created by Playwright")
+        
+        # Get the newest file
+        latest_webm = max(webm_files, key=os.path.getctime)
+        
+        # Move to our expected path
+        shutil.move(latest_webm, video_path)
+        
+        webm_size = os.path.getsize(video_path)
+        print(f"✓ [{segment_index}] Video captured: {webm_size} bytes")
+        
+        if webm_size < 10000:
+            raise Exception(f"Video file too small: {webm_size} bytes")
         
     except Exception as e:
-        print(f"❌ [{segment_index}] Playwright rendering failed: {e}")
-        
-        # Fallback: Create a simple video with text
-        print(f"  🔄 Creating fallback video...")
-        fallback_mp4 = f'/tmp/segment_{segment_index}_fallback.mp4'
-        
-        try:
-            # Create simple video with text overlay
-            subprocess.run([
-                'ffmpeg', '-y',
-                '-f', 'lavfi',
-                '-i', f"color=c=black:s=1920x1080:d={audio_duration}",
-                '-vf', f"drawtext=text='Segment {segment_index}':fontsize=60:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2",
-                '-c:v', 'libx264',
-                '-preset', 'ultrafast',
-                '-pix_fmt', 'yuv420p',
-                fallback_mp4
-            ], capture_output=True, timeout=30)
-            
-            webm_path = fallback_mp4
-            print(f"✓ [{segment_index}] Fallback video created")
-        except:
-            raise Exception("Both rendering and fallback failed")
+        print(f"❌ [{segment_index}] Rendering FAILED: {e}")
+        raise Exception(f"Segment {segment_index} rendering failed: {e}")
     
-    # STEP 5: Verify WebM/Video file
-    if not os.path.exists(webm_path) or os.path.getsize(webm_path) < 10000:
-        raise Exception(f"Video file invalid: {webm_path}")
+    # STEP 5: Verify video file
+    if not os.path.exists(video_path) or os.path.getsize(video_path) < 10000:
+        raise Exception(f"Video file invalid: {video_path}")
     
-    # STEP 6: Merge with audio + NORMALIZE ENCODING for guaranteed concatenation compatibility
+    # STEP 6: Merge with audio using FFmpeg
     mp4_path = f'/tmp/segment_{segment_index}_final.mp4'
     
     try:
         result = subprocess.run([
             'ffmpeg', '-y',
-            '-i', webm_path,
+            '-i', video_path,
             '-i', audio_path,
             
             # ✅ VIDEO ENCODING - NORMALIZED FOR CONCATENATION
             '-c:v', 'libx264',
             '-preset', 'medium',
-            '-profile:v', 'high',          # Consistent profile
-            '-level', '4.0',               # Consistent level
-            '-pix_fmt', 'yuv420p',         # Consistent pixel format
+            '-profile:v', 'high',
+            '-level', '4.0',
+            '-pix_fmt', 'yuv420p',
             
-            # ✅ FRAME RATE & TIMING - CRITICAL FOR CONCAT
-            '-r', '30',                    # Fixed 30 FPS
-            '-video_track_timescale', '30000',  # Fixed timescale (30000 = 30 fps * 1000)
-            '-vsync', 'cfr',               # Constant frame rate (no drops)
+            # ✅ FRAME RATE & TIMING
+            '-r', '30',
+            '-video_track_timescale', '30000',
+            '-vsync', 'cfr',
             
-            # ✅ GOP & KEYFRAMES - ENSURES CLEAN BOUNDARIES
-            '-g', '30',                    # Keyframe every 30 frames (1 second)
-            '-keyint_min', '30',           # Minimum keyframe interval
-            '-sc_threshold', '0',          # Disable scene change detection
+            # ✅ GOP & KEYFRAMES
+            '-g', '30',
+            '-keyint_min', '30',
+            '-sc_threshold', '0',
             
             # ✅ BITRATE CONTROL
             '-b:v', '5000k',
@@ -300,8 +264,8 @@ def render_segment_video(segment: dict, audio_base64: str, audio_duration: float
             # ✅ AUDIO ENCODING - NORMALIZED
             '-c:a', 'aac',
             '-b:a', '128k',
-            '-ar', '48000',                # Fixed 48kHz sample rate
-            '-ac', '2',                    # Stereo
+            '-ar', '48000',
+            '-ac', '2',
             
             '-shortest',
             mp4_path
@@ -330,7 +294,7 @@ def render_segment_video(segment: dict, audio_base64: str, audio_duration: float
     # Cleanup
     try:
         os.remove(html_path)
-        os.remove(webm_path)
+        os.remove(video_path)
         os.remove(audio_path)
         os.remove(mp4_path)
     except:

@@ -50,7 +50,8 @@ class VideoScriptAgent:
             llm=self.llm,
             verbose=True,
             allow_delegation=False,
-            max_iter=2
+            max_iter=2,
+            tools=[]
         )
     
     async def generate_script_segments(
