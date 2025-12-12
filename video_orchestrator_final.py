@@ -51,6 +51,7 @@ class VideoOrchestrator:
             print(f"AI Animations: {'Enabled' if USE_AI_ANIMATIONS else 'Disabled'}")
             print(f"Streaming: Cloudflare Stream with Adaptive HLS")
             print(f"Quality: 5 Mbps 1080p (auto-generates 720p, 480p)")
+            print(f"Concat: Normalized encoding for <10s stream-copy")
             print(f"{'='*70}\n")
             
             # PHASE 0: Generate metadata (title + description) FIRST
@@ -115,7 +116,7 @@ class VideoOrchestrator:
             print(f"✓ Ready to render: {len(valid_pairs)} segments\n")
             
             # PHASE 4: Render videos in BATCHES with AI animations
-            print(f"🎥 PHASE 4: Rendering videos with AI animations (5 Mbps)...")
+            print(f"🎥 PHASE 4: Rendering videos with AI animations (5 Mbps, normalized)...")
             video_start = time.time()
             
             video_files = await self._render_videos_in_batches(valid_pairs)
@@ -126,13 +127,14 @@ class VideoOrchestrator:
             if len(video_files) == 0:
                 raise Exception("No videos were successfully rendered")
             
-            # PHASE 5: Concatenate with streaming optimization
-            print("🎞️  PHASE 5: Concatenating (5 Mbps, faststart enabled)...")
+            # PHASE 5: Concatenate with optimized stream copy
+            print("🎞️  PHASE 5: Concatenating (optimized stream copy)...")
             concat_start = time.time()
             
             final_video_path = await self._concatenate_videos(video_files)
             
-            print(f"✅ Concatenation complete ({time.time() - concat_start:.1f}s)\n")
+            concat_time = time.time() - concat_start
+            print(f"✅ Concatenation complete ({concat_time:.1f}s)\n")
             
             # PHASE 6: Upload to Cloudflare Stream (automatic HLS conversion)
             print("☁️  PHASE 6: Uploading to Cloudflare Stream...")
@@ -170,6 +172,7 @@ class VideoOrchestrator:
             print(f"📄 Description: {len(description)} chars")
             print(f"🌐 HLS URL: {hls_url}")
             print(f"📦 MP4 URL: {mp4_url}")
+            print(f"⏱️  Concat Time: {concat_time:.1f}s")
             print(f"⚡ Cloudflare Stream Features:")
             print(f"   - Adaptive HLS streaming (1080p, 720p, 480p)")
             print(f"   - Global CDN delivery (285+ cities)")
@@ -187,6 +190,7 @@ class VideoOrchestrator:
                 "duration": int(total_duration),
                 "segments_rendered": successful_videos,
                 "segments_total": len(segments),
+                "concat_time_seconds": round(concat_time, 1),
                 "streaming_platform": "Cloudflare Stream",
                 "streaming_optimized": True
             }
@@ -260,7 +264,7 @@ class VideoOrchestrator:
                     json={
                         "model": "playai-tts",
                         "input": segment_text,
-                        "voice": "Fritz-PlayAI",
+                        "voice": "Cheyenne-PlayAI",
                         "response_format": "wav"
                     },
                     timeout=AUDIO_API_TIMEOUT
@@ -401,11 +405,15 @@ class VideoOrchestrator:
         return video_files
     
     async def _concatenate_videos(self, video_files: List[str]) -> str:
-        """Concatenate all video files in order with 5 Mbps bitrate and streaming optimization"""
+        """
+        Optimized video concatenation using stream copy.
+        With normalized encoding, this should succeed every time in <10 seconds.
+        """
         
         if not video_files:
             raise Exception("No video files to concatenate")
         
+        # Sort videos by segment index
         def get_index(path: str) -> int:
             import re
             match = re.search(r'segment_(\d+)_final', path)
@@ -413,37 +421,99 @@ class VideoOrchestrator:
         
         sorted_videos = sorted(video_files, key=get_index)
         
+        # Validate all files exist
+        for video_path in sorted_videos:
+            if not os.path.exists(video_path):
+                raise Exception(f"Video file missing: {video_path}")
+            if os.path.getsize(video_path) < 10000:
+                raise Exception(f"Video file too small: {video_path}")
+        
+        print(f"  📦 Concatenating {len(sorted_videos)} segments...")
+        
+        # Create concat list file
         concat_file = '/tmp/concat_list.txt'
         with open(concat_file, 'w') as f:
             for video_path in sorted_videos:
-                if os.path.exists(video_path):
-                    f.write(f"file '{video_path}'\n")
+                # Use absolute paths for safety
+                abs_path = os.path.abspath(video_path)
+                f.write(f"file '{abs_path}'\n")
         
         output_path = '/tmp/final_video.mp4'
         
-        # Concatenate with 5 Mbps bitrate and faststart optimization
-        result = subprocess.run([
-            'ffmpeg', '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', concat_file,
-            '-c:v', 'libx264',
-            '-b:v', '5000k',           # 5 Mbps video bitrate
-            '-maxrate', '5500k',       # Max bitrate
-            '-bufsize', '10000k',      # Buffer size
-            '-preset', 'medium',       # Encoding speed
-            '-movflags', '+faststart', # Streaming optimization
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            output_path
-        ], capture_output=True, text=True, timeout=300)
+        # Try stream copy (should work with normalized encoding)
+        print("  🚀 Attempting stream copy (normalized encoding)...")
         
-        if result.returncode != 0:
-            raise Exception(f"Concat failed: {result.stderr}")
+        try:
+            result = subprocess.run([
+                'ffmpeg', '-y',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', concat_file,
+                '-c', 'copy',              # Stream copy (no re-encoding)
+                '-movflags', '+faststart', # Streaming optimization
+                output_path
+            ], capture_output=True, text=True, timeout=30)  # Should be fast
+            
+            if result.returncode == 0:
+                # Verify output
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 100000:
+                    file_size_mb = os.path.getsize(output_path) / 1024 / 1024
+                    print(f"  ✅ Stream copy successful: {file_size_mb:.1f} MB")
+                    
+                    # Cleanup
+                    os.remove(concat_file)
+                    for vp in sorted_videos:
+                        try:
+                            os.remove(vp)
+                        except:
+                            pass
+                    
+                    return output_path
+                else:
+                    print(f"  ⚠️  Output file invalid")
+            else:
+                print(f"  ⚠️  Stream copy failed: {result.stderr[:150]}")
+        except subprocess.TimeoutExpired:
+            print(f"  ⚠️  Stream copy timeout")
+        except Exception as e:
+            print(f"  ⚠️  Stream copy error: {e}")
         
-        file_size_mb = os.path.getsize(output_path) / 1024 / 1024
-        print(f"  ✓ Final video: {file_size_mb:.1f} MB (5 Mbps, faststart enabled)")
+        # Fallback: Fast re-encode (shouldn't be needed with normalized encoding)
+        print("  ⚠️  Falling back to re-encode (this indicates encoding issue)...")
         
+        try:
+            result = subprocess.run([
+                'ffmpeg', '-y',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', concat_file,
+                '-c:v', 'libx264',
+                '-preset', 'veryfast',
+                '-crf', '23',
+                '-b:v', '5000k',
+                '-maxrate', '5500k',
+                '-bufsize', '10000k',
+                '-movflags', '+faststart',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                output_path
+            ], capture_output=True, text=True, timeout=180)
+            
+            if result.returncode != 0:
+                raise Exception(f"Re-encode failed: {result.stderr[:200]}")
+            
+            if not os.path.exists(output_path) or os.path.getsize(output_path) < 100000:
+                raise Exception("Output file invalid")
+            
+            file_size_mb = os.path.getsize(output_path) / 1024 / 1024
+            print(f"  ✅ Re-encode successful: {file_size_mb:.1f} MB")
+            
+        except subprocess.TimeoutExpired:
+            raise Exception("Re-encode timeout")
+        except Exception as e:
+            raise Exception(f"Re-encode error: {e}")
+        
+        # Cleanup
         os.remove(concat_file)
         for vp in sorted_videos:
             try:

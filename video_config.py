@@ -13,10 +13,10 @@ MODEL_CONFIG = {
     "anthropic": {
         "model": "claude-sonnet-4-20250514",
         "temperature": 0.7,
-        "max_tokens": 10000
+        "max_tokens": 30000
     },
     "groq": {
-        "model": "groq/llama-3.3-70b-versatile",
+        "model": "groq/openai/gpt-oss-120b",
         "temperature": 0.7,
         "max_tokens": 25000
     }
