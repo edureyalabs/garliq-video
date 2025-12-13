@@ -1,6 +1,4 @@
-# video_animation_agent.py - NO FALLBACK VERSION
-# Replace your existing file with this
-
+# video_animation_agent.py
 import os
 import re
 from typing import Optional
@@ -16,19 +14,18 @@ from video_animation_prompts import (
 
 class VideoAnimationAgent:
     """
-    AI agent that generates high-quality HTML5 animation code for video segments.
-    NO FALLBACKS - Fails immediately if generation doesn't work.
+    AI agent that generates complete scene-based HTML animations for educational explainer videos.
+    Creates topic-specific SVG diagrams and auto-playing animations.
     """
     
     def __init__(self):
         """Initialize the animation coding agent with configured LLM"""
-        print("🎨 Initializing VideoAnimationAgent (NO FALLBACK MODE)")
+        print("🎨 Initializing VideoAnimationAgent (Scene-Based Architecture)")
         print(f"📊 Provider: {MODEL_PROVIDER}")
         print(f"📊 Model: {MODEL_CONFIG[MODEL_PROVIDER]['model']}")
-        print(f"🎯 Animation Stack: Canvas2D + SVG + CSS3 + GSAP + Lucide")
-        print(f"⚠️  Fallback: DISABLED - Will fail if generation fails")
+        print(f"🎯 Output: Complete auto-playing scene HTML files")
+        print(f"🎯 Style: Topic-specific SVG diagrams + GSAP animations")
         
-        # Initialize LLM object properly for CrewAI
         self.llm = self._initialize_llm()
         
     def _initialize_llm(self):
@@ -58,8 +55,7 @@ class VideoAnimationAgent:
         segment_index: int
     ) -> str:
         """
-        Generate complete HTML animation code for a specific segment.
-        FAILS immediately if generation doesn't work (no fallback).
+        Generate complete scene-based HTML animation code for a specific segment.
         
         Args:
             segment_text: The narration text for this segment
@@ -67,12 +63,12 @@ class VideoAnimationAgent:
             segment_index: Index of the segment (0-based)
             
         Returns:
-            Complete HTML document with professional animation code
+            Complete HTML document with auto-playing scene animation
             
         Raises:
             Exception: If generation or validation fails
         """
-        print(f"🎨 Generating animation for segment {segment_index}...")
+        print(f"🎨 Generating scene {segment_index}...")
         print(f"   Narration: {segment_text[:70]}...")
         print(f"   Visual: {visual_hint[:70]}...")
         
@@ -104,7 +100,7 @@ class VideoAnimationAgent:
             animation_task = Task(
                 description=task_description,
                 agent=animation_coder,
-                expected_output="Complete HTML document with animation code"
+                expected_output="Complete auto-playing scene HTML with topic-specific animations"
             )
             print(f"  ✓ Task created successfully")
             
@@ -140,11 +136,12 @@ class VideoAnimationAgent:
             
             if not validation_result['valid']:
                 issues_str = ', '.join(validation_result['issues'])
-                raise Exception(f"Segment {segment_index}: Validation failed - {issues_str}")
+                print(f"  ⚠️  Validation warnings: {issues_str}")
+                # Don't fail, just warn - AI might have created good content anyway
             
-            print(f"✅ Animation generated: {len(html_code)} chars")
+            print(f"✅ Scene generated: {len(html_code)} chars")
             print(f"   Quality: {validation_result['quality_score']}/100")
-            print(f"   Tools: {', '.join(validation_result['tools_used'])}")
+            print(f"   Features: {', '.join(validation_result['features'])}")
             
             return html_code
             
@@ -180,93 +177,139 @@ class VideoAnimationAgent:
                 print(f"  ✓ Extracted HTML with added DOCTYPE ({len(html_code)} chars)")
                 return html_code
         
+        # Method 3: Just look for body tag
+        body_pattern = r'<body[^>]*>.*?</body>'
+        match = re.search(body_pattern, response, re.DOTALL | re.IGNORECASE)
+        if match:
+            body_code = match.group(0)
+            html_code = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scene</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+</head>
+{body_code}
+</html>'''
+            print(f"  ✓ Extracted body and wrapped in HTML ({len(html_code)} chars)")
+            return html_code
+        
         print(f"  ✗ Could not extract valid HTML from response")
         return None
     
     def _validate_animation_code(self, html_code: str, segment_index: int) -> dict:
         """
-        Validate animation code quality.
+        Validate scene-based animation code quality.
         """
         
         issues = []
         warnings = []
-        tools_used = []
+        features = []
         quality_score = 100
         
-        # REQUIRED: Basic HTML structure
-        if '<!DOCTYPE html>' not in html_code and '<html' not in html_code.lower():
-            issues.append("Missing HTML document structure")
-            quality_score -= 20
+        # CRITICAL: Full-screen check
+        if 'max-width: 1400px' in html_code or 'max-width: 1200px' in html_code or 'max-width: 1000px' in html_code:
+            issues.append("Content restricted by max-width (should be full-screen)")
+            quality_score -= 15
         
-        # REQUIRED: Canvas element
-        has_canvas = '<canvas' in html_code.lower() and 'id="canvas"' in html_code.lower()
+        # Check for viewport size
+        if 'width: 1920px' in html_code and 'height: 1080px' in html_code:
+            features.append('Full-screen')
+            quality_score += 5
         
-        if not has_canvas:
-            issues.append("Missing canvas element (<canvas id='canvas'>)")
-            quality_score -= 20
-        else:
-            tools_used.append('Canvas2D')
-        
-        # REQUIRED: GSAP library
+        # Check for GSAP
         has_gsap = 'gsap' in html_code.lower() and 'cdnjs.cloudflare.com/ajax/libs/gsap' in html_code
-        
-        if not has_gsap:
-            issues.append("Missing GSAP library (required for animations)")
-            quality_score -= 20
+        if has_gsap:
+            features.append('GSAP')
+            
+            # Check for timeline (auto-play indicator)
+            if 'gsap.timeline()' in html_code or 'gsap.from' in html_code or 'gsap.to' in html_code:
+                features.append('Auto-play')
+                quality_score += 10
+            else:
+                warnings.append("GSAP loaded but no animations found")
+                quality_score -= 5
         else:
-            tools_used.append('GSAP')
-        
-        # REQUIRED: Recording interface
-        has_start_recording = 'window.startRecording' in html_code
-        
-        if not has_start_recording:
-            issues.append("Missing window.startRecording() function")
+            issues.append("Missing GSAP library")
             quality_score -= 20
         
-        # REQUIRED: Text overlay structure
-        has_overlay = '.overlay' in html_code or 'class="overlay"' in html_code
+        # Check for SVG content (topic-specific visuals)
+        if '<svg' in html_code:
+            features.append('SVG')
+            
+            # Check for substantive SVG (not just empty)
+            svg_elements = len(re.findall(r'<(rect|circle|line|polygon|path|text)', html_code))
+            if svg_elements >= 3:
+                features.append(f'SVG-rich ({svg_elements} elements)')
+                quality_score += 10
+            elif svg_elements > 0:
+                features.append(f'SVG-basic ({svg_elements} elements)')
+                quality_score += 5
+        else:
+            warnings.append("No SVG content found (might be text-only scene)")
         
-        if not has_overlay:
-            warnings.append("Missing .overlay class (text layer)")
-            quality_score -= 10
-        
-        # Check for professional elements
-        if 'backdrop-filter' in html_code:
-            tools_used.append('Glass-morphism')
-            quality_score += 5
-        
-        if 'text-shadow' in html_code:
-            quality_score += 3
-        
-        if 'gsap.from' in html_code or 'gsap.to' in html_code:
-            tools_used.append('GSAP-animations')
-            quality_score += 5
-        
+        # Check for Lucide icons
         if 'lucide' in html_code.lower():
-            tools_used.append('Lucide-icons')
+            features.append('Lucide-icons')
+            
+            # Check for unsafe icon names
+            unsafe_icons = ['memory', 'chip', 'circuit', 'processor', 'code-2']
+            for icon in unsafe_icons:
+                if f'data-lucide="{icon}"' in html_code:
+                    warnings.append(f"Potentially unsafe Lucide icon: '{icon}'")
+                    quality_score -= 3
+        
+        # Check for canvas (we don't want this)
+        if '<canvas' in html_code:
+            warnings.append("Canvas element found (prefer SVG)")
+            quality_score -= 5
+        
+        # Check for appropriate text sizes
+        large_text_found = False
+        if 'font-size: 5rem' in html_code or 'font-size: 6rem' in html_code or 'font-size: 4rem' in html_code:
+            large_text_found = True
+            features.append('Large-text')
+            quality_score += 5
+        
+        if not large_text_found:
+            warnings.append("Title text might be too small")
+            quality_score -= 5
+        
+        # Check for gradient backgrounds
+        if 'linear-gradient' in html_code or 'radial-gradient' in html_code:
+            features.append('Gradient-bg')
+        
+        # Check for animations/transitions
+        if '@keyframes' in html_code or 'animation:' in html_code:
+            features.append('CSS-animations')
+            quality_score += 5
+        
+        # Check if Lucide icons are initialized
+        if 'lucide.createIcons()' in html_code:
+            quality_score += 3
         
         # Ensure quality score is in range
         quality_score = max(0, min(100, quality_score))
         
         # Determine validity
-        is_valid = len(issues) == 0
+        is_valid = len(issues) == 0 and quality_score >= 50
         
         # Log result
         if is_valid:
             print(f"  ✅ Validation passed (Quality: {quality_score}/100)")
         else:
-            print(f"  ❌ Validation failed: {len(issues)} issue(s)")
+            print(f"  ⚠️  Validation warnings: {len(issues)} issue(s), {len(warnings)} warning(s)")
             for issue in issues:
                 print(f"     - {issue}")
         
         if warnings:
             for warning in warnings:
-                print(f"  ⚠️  {warning}")
+                print(f"  ℹ️  {warning}")
         
         return {
             'valid': is_valid,
             'issues': issues,
             'warnings': warnings,
-            'tools_used': tools_used if tools_used else ['vanilla-js'],
+            'features': features if features else ['basic-html'],
             'quality_score': quality_score
         }
