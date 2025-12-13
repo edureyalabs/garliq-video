@@ -1,4 +1,3 @@
-# video_script_agent.py
 import os
 import json
 from typing import List, Dict, Any
@@ -14,13 +13,7 @@ from video_script_prompts import (
 
 
 class VideoScriptAgent:
-    """
-    CrewAI-powered video script generation agent
-    """
-    
     def __init__(self, model_provider: str = MODEL_PROVIDER):
-        """Initialize the video script agent with specified model provider"""
-        
         self.model_provider = model_provider
         self.model_config = MODEL_CONFIG[model_provider]
         
@@ -28,7 +21,6 @@ class VideoScriptAgent:
         print(f"📊 Provider: {model_provider}")
         print(f"📊 Model: {self.model_config['model']}")
         
-        # Initialize LLM
         if model_provider == "anthropic":
             self.llm = LLM(
                 model=self.model_config['model'],
@@ -36,13 +28,12 @@ class VideoScriptAgent:
                 temperature=self.model_config['temperature'],
                 max_tokens=self.model_config['max_tokens']
             )
-        else:  # groq
+        else:
             self.llm = LLM(
                 model=self.model_config['model'],
                 temperature=self.model_config['temperature']
             )
         
-        # Create script writer agent
         self.script_agent = Agent(
             role=SCRIPT_WRITER_ROLE,
             goal=SCRIPT_WRITER_GOAL,
@@ -61,19 +52,6 @@ class VideoScriptAgent:
         num_segments: int = None,
         retry_count: int = 0
     ) -> List[Dict[str, Any]]:
-        """
-        Generate video script segments using CrewAI
-        
-        Args:
-            prompt: Video topic/prompt
-            category: Topic category
-            num_segments: Number of segments (defaults to config value)
-            retry_count: Current retry attempt
-            
-        Returns:
-            List of segment dictionaries with index, text, visual_hint
-        """
-        
         if num_segments is None:
             num_segments = TOTAL_SEGMENTS
         
@@ -81,12 +59,10 @@ class VideoScriptAgent:
         print(f"📊 Segments: {num_segments} | Category: {category}")
         
         try:
-            # Calculate segment ranges for prompt
             middle_start = max(3, num_segments // 4)
             middle_end = num_segments - max(3, num_segments // 5)
             conclusion_start = num_segments - max(2, num_segments // 10)
             
-            # Build task description
             if retry_count > 0:
                 task_description = SCRIPT_REGENERATION_TASK_TEMPLATE.format(
                     original_topic=prompt,
@@ -99,6 +75,7 @@ class VideoScriptAgent:
 - Return ONLY JSON array (no markdown, no extra text)
 - Each object must have: index (int), text (string), visual_hint (string)
 - Array must start with [ and end with ]
+- Last 2-3 segments MUST contain specific summary with concrete takeaways
                     """
                 )
             else:
@@ -111,14 +88,12 @@ class VideoScriptAgent:
                     conclusion_start=conclusion_start
                 )
             
-            # Create task
             task = Task(
                 description=task_description,
-                expected_output=f"Valid JSON array with {num_segments} segment objects",
+                expected_output=f"Valid JSON array with {num_segments} segment objects including comprehensive conclusion",
                 agent=self.script_agent
             )
             
-            # Execute with CrewAI
             crew = Crew(
                 agents=[self.script_agent],
                 tasks=[task],
@@ -130,17 +105,17 @@ class VideoScriptAgent:
             
             print("📦 Parsing script response...")
             
-            # Extract JSON
             json_content = self._extract_json(raw_output)
             segments = json.loads(json_content)
             
-            # Validate
             if not self._validate_segments(segments, num_segments):
                 raise ValueError("Generated segments failed validation")
             
+            if not self._validate_conclusion(segments, num_segments):
+                print("⚠️  Conclusion validation failed, but proceeding...")
+            
             print(f"✅ Script generated: {len(segments)} segments")
             
-            # Ensure indices are correct
             for i, seg in enumerate(segments):
                 seg['index'] = i
             
@@ -155,21 +130,16 @@ class VideoScriptAgent:
             return self._create_fallback_segments(prompt, num_segments)
     
     def _extract_json(self, text: str) -> str:
-        """Extract JSON array from LLM response"""
-        
         text = text.strip()
         
-        # Remove markdown code blocks
         text = text.replace('```json\n', '')
         text = text.replace('```json', '')
         text = text.replace('\n```', '')
         text = text.replace('```', '')
         
-        # Remove "Final Answer:" prefix
         if 'Final Answer:' in text:
             text = text.split('Final Answer:')[-1].strip()
         
-        # Find JSON array
         start = text.find('[')
         end = text.rfind(']') + 1
         
@@ -182,17 +152,14 @@ class VideoScriptAgent:
         return json_str
     
     def _validate_segments(self, segments: list, expected_count: int) -> bool:
-        """Validate generated segments"""
-        
         if not isinstance(segments, list):
             print("❌ Response is not a list")
             return False
         
-        if len(segments) < expected_count * 0.8:  # Allow 20% tolerance
+        if len(segments) < expected_count * 0.8:
             print(f"❌ Too few segments: {len(segments)}/{expected_count}")
             return False
         
-        # Validate each segment
         for i, seg in enumerate(segments):
             if not isinstance(seg, dict):
                 print(f"❌ Segment {i} is not a dict")
@@ -205,7 +172,6 @@ class VideoScriptAgent:
             if 'visual_hint' not in seg:
                 seg['visual_hint'] = "Abstract geometric animation"
             
-            # Check word count (should be 30-40 words) - just warn, don't fail
             word_count = len(seg['text'].split())
             if word_count < 20 or word_count > 60:
                 print(f"⚠️  Segment {i} word count: {word_count} (expected 30-40)")
@@ -213,22 +179,51 @@ class VideoScriptAgent:
         print("✅ Validation passed")
         return True
     
-    def _create_fallback_segments(self, topic: str, num_segments: int) -> List[Dict[str, Any]]:
-        """Create fallback segments if AI generation fails"""
+    def _validate_conclusion(self, segments: list, total_segments: int) -> bool:
+        if len(segments) < 2:
+            return True
         
+        conclusion_segments = segments[-2:]
+        
+        generic_phrases = [
+            "essential concepts",
+            "continue exploring",
+            "thank you for watching",
+            "deepen your understanding",
+            "we've covered",
+            "educational video"
+        ]
+        
+        has_specific_content = False
+        
+        for seg in conclusion_segments:
+            text_lower = seg['text'].lower()
+            
+            is_generic = any(phrase in text_lower for phrase in generic_phrases)
+            
+            if not is_generic and len(seg['text'].split()) >= 30:
+                has_specific_content = True
+                break
+        
+        if has_specific_content:
+            print("✅ Conclusion appears to have specific summary content")
+            return True
+        else:
+            print("⚠️  Conclusion may be too generic")
+            return False
+    
+    def _create_fallback_segments(self, topic: str, num_segments: int) -> List[Dict[str, Any]]:
         print(f"⚠️  Using fallback script for: {topic}")
         
         segments = []
         
-        # Introduction
         segments.append({
             "index": 0,
             "text": f"Welcome to this educational video about {topic}. Today we'll explore this fascinating subject in depth and understand its key concepts.",
             "visual_hint": "Title animation with dynamic shapes"
         })
         
-        # Body segments
-        section_count = num_segments - 2
+        section_count = num_segments - 3
         for i in range(1, section_count + 1):
             segments.append({
                 "index": i,
@@ -236,11 +231,16 @@ class VideoScriptAgent:
                 "visual_hint": f"Animated visualization - variation {i}"
             })
         
-        # Conclusion
+        segments.append({
+            "index": num_segments - 2,
+            "text": f"Throughout this video, we've explored the fundamental principles of {topic}, examined practical applications, and discovered how these concepts shape real-world outcomes.",
+            "visual_hint": "Summary card with key points listed: Principle 1, Application 2, Real-world Impact 3. Background: gold particles."
+        })
+        
         segments.append({
             "index": num_segments - 1,
-            "text": f"We've covered the essential concepts of {topic}. Continue exploring to deepen your understanding. Thank you for watching this educational video.",
-            "visual_hint": "Conclusion animation with summary"
+            "text": f"From basic concepts to advanced applications, you now have a solid foundation in {topic}. Apply this knowledge to drive innovation and continue your learning journey.",
+            "visual_hint": "Conclusion animation with forward-looking message: 'Keep Learning, Keep Growing' in large text. Background: upward moving particles."
         })
         
         return segments

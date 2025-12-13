@@ -1,5 +1,3 @@
-# video_script_prompts.py
-
 SCRIPT_WRITER_ROLE = """Expert educational video script writer"""
 
 SCRIPT_WRITER_GOAL = """Write clear 30-40 word narration segments with specific visual layout instructions"""
@@ -56,7 +54,26 @@ STRUCTURE:
 - Segments 3-{middle_start}: Foundation (concepts with bullets)
 - Segments {middle_start}-{middle_end}: Details (explanations with visuals)
 - Segments {middle_end}-{conclusion_start}: Applications (examples, stats)
-- Segments {conclusion_start}-{num_segments}: Conclusion (summary)
+- Segments {conclusion_start}-{num_segments}: Conclusion with COMPREHENSIVE SUMMARY
+
+CRITICAL CONCLUSION REQUIREMENTS (Last 2-3 segments):
+
+The conclusion MUST be a proper summary that:
+1. Explicitly recaps the main concepts covered in the video
+2. Lists 3-5 key takeaways from the entire presentation
+3. References specific topics discussed earlier in the video
+4. Provides forward-looking perspective or call-to-action
+5. Feels like a satisfying ending, not generic filler
+
+DO NOT use generic conclusions like:
+- "We've covered the essential concepts of [topic]"
+- "Continue exploring to deepen your understanding"
+- "Thank you for watching this educational video"
+
+INSTEAD, use specific summaries like:
+- "We explored how [specific concept A] works through [specific example], discovered that [specific finding B], and saw real applications in [specific field C]"
+- "Remember these key points: [specific takeaway 1], [specific takeaway 2], [specific takeaway 3]"
+- "From [opening concept] to [final concept], we've seen how this technology shapes [specific outcome]"
 
 EXAMPLES:
 
@@ -88,11 +105,25 @@ Example 4 - Content:
   "visual_hint": "Title 'Neural Networks' in 3rem bold. Description: 'Layers of interconnected nodes processing information' in 1.2rem. Below: simple diagram showing 3 connected circles labeled 'Input → Hidden → Output'. Background: flowing particles connecting like neural pathways."
 }}
 
-Example 5 - Conclusion:
+Example 5 - GOOD Conclusion (Specific Summary):
 {{
   "index": 14,
-  "text": "The future of AI holds limitless possibilities. Continue exploring this transformative technology and be part of shaping tomorrow's innovations.",
-  "visual_hint": "Large text 'THE FUTURE IS HERE' in 4.5rem bold with gold gradient (#fbbf24 to white). Subtitle 'Continue Exploring' in 1.8rem light. Background: warm particles rising upward in gold/yellow colors, creating uplifting mood."
+  "text": "We've journeyed from understanding neural networks and machine learning phases to witnessing AI's real-world impact across healthcare, finance, and transportation sectors.",
+  "visual_hint": "Title 'KEY TAKEAWAYS' in 3.5rem bold gold. Below: numbered summary list with star icons: '1. Neural networks learn through layers', '2. ML requires quality data & training', '3. AI adoption grew 275% since 2020', '4. Real applications in healthcare & finance'. Background: warm gold particles (#fbbf24) rising upward."
+}}
+
+Example 6 - GOOD Conclusion (Final Call-to-Action):
+{{
+  "index": 15,
+  "text": "As AI continues evolving with breakthrough techniques like transformer models and reinforcement learning, your understanding of these fundamentals positions you at the forefront of innovation.",
+  "visual_hint": "Large text 'THE FUTURE STARTS NOW' in 4.5rem bold with gradient (gold to white). Subtitle 'Keep Learning, Keep Growing' in 1.8rem. Background: dynamic particles forming upward arrow pattern, suggesting progress and growth."
+}}
+
+BAD Conclusion Example (Do NOT use):
+{{
+  "index": 14,
+  "text": "We've covered the essential concepts of artificial intelligence. Continue exploring to deepen your understanding. Thank you for watching this educational video.",
+  "visual_hint": "Generic conclusion scene"
 }}
 
 CRITICAL:
@@ -102,6 +133,7 @@ CRITICAL:
 - Start with [ end with ]
 - Each text: exactly 30-40 words
 - Each visual_hint: specific layout instructions (50-100 words)
+- Last 2-3 segments MUST contain specific summary of topics covered
 
 Generate the script now:
 """
@@ -117,9 +149,17 @@ Attempt: #{retry_count}
 FIXES NEEDED:
 {critical_fixes}
 
+MANDATORY CONCLUSION REQUIREMENTS:
+The last 2-3 segments MUST provide a comprehensive summary that:
+- Explicitly mentions specific concepts covered in the video
+- Lists 3-5 concrete key takeaways
+- References topics by name (not generic statements)
+- Provides satisfying closure with forward-looking perspective
+
 Return valid JSON array:
 - Each text: 30-40 words
 - Each visual_hint: specific text/layout instructions (not abstract)
+- Conclusion segments: specific summaries with actual content recap
 - NO markdown, NO extra text
 - Start with [, end with ]
 """

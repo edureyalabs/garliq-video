@@ -1,10 +1,10 @@
-# video_orchestrator_final.py
 import os
 import asyncio
 import subprocess
 import requests
 import time
 import base64
+import random
 from typing import List, Dict, Any, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -17,7 +17,11 @@ from video_config import (
     AUDIO_API_TIMEOUT,
     VIDEO_RENDER_WORKERS,
     USE_AI_ANIMATIONS,
-    ANIMATION_GENERATION_TIMEOUT
+    ANIMATION_GENERATION_TIMEOUT,
+    BACKGROUND_MUSIC_FILES,
+    BGM_VOLUME,
+    TRANSITION_DURATION,
+    TRANSITION_TYPES
 )
 from video_animation_agent import VideoAnimationAgent
 from video_metadata_generator import VideoMetadataGenerator
@@ -33,7 +37,6 @@ class VideoOrchestrator:
         self.metadata_generator = VideoMetadataGenerator()
         
     async def generate_video(self, video_id: str, user_id: str, topic_category: str):
-        """Main video generation pipeline with AI-generated animations, metadata, and Cloudflare Stream"""
         try:
             self._update_status(video_id, 'generating')
             
@@ -49,16 +52,15 @@ class VideoOrchestrator:
             print(f"Segments: {self.total_segments}")
             print(f"Batch Size: {RENDER_BATCH_SIZE}")
             print(f"AI Animations: {'Enabled' if USE_AI_ANIMATIONS else 'Disabled'}")
+            print(f"Background Music: {len(BACKGROUND_MUSIC_FILES)} tracks @ {BGM_VOLUME}% volume")
+            print(f"Transitions: {len(TRANSITION_TYPES)} types @ {TRANSITION_DURATION}s duration")
             print(f"Streaming: Cloudflare Stream with Adaptive HLS")
             print(f"Quality: 5 Mbps 1080p (auto-generates 720p, 480p)")
-            print(f"Concat: Normalized encoding for <10s stream-copy")
             print(f"{'='*70}\n")
             
-            # PHASE 0: Generate metadata (title + description) FIRST
             print("📝 PHASE 0: Generating metadata...")
             metadata_start = time.time()
             
-            # Generate title (if not already set)
             if not video.get('title') or video.get('title') == 'Educational Video':
                 print("  🏷️  Generating title...")
                 title = self.metadata_generator.generate_title(prompt)
@@ -67,12 +69,10 @@ class VideoOrchestrator:
                 title = video['title']
                 print(f"  ✓ Using existing title: {title}")
             
-            # Generate description
             print("  📄 Generating description...")
             description = self.metadata_generator.generate_description(prompt, title)
             print(f"  ✓ Description: {len(description)} characters")
             
-            # Update database with metadata
             self.supabase.table('video_generations').update({
                 'title': title,
                 'description': description
@@ -80,7 +80,6 @@ class VideoOrchestrator:
             
             print(f"✅ Metadata complete ({time.time() - metadata_start:.1f}s)\n")
             
-            # PHASE 1: Generate script with CrewAI
             print("📝 PHASE 1: Generating script with CrewAI...")
             start_time = time.time()
             
@@ -91,7 +90,6 @@ class VideoOrchestrator:
             
             print(f"✅ Script complete: {len(segments)} segments ({time.time() - start_time:.1f}s)\n")
             
-            # PHASE 2: Generate audio in parallel
             print(f"🔊 PHASE 2: Generating audio ({AUDIO_GENERATION_WORKERS} workers)...")
             audio_start = time.time()
             
@@ -100,7 +98,6 @@ class VideoOrchestrator:
             successful_audio = sum(1 for r in audio_results if r[0] is not None)
             print(f"✅ Audio complete: {successful_audio}/{len(segments)} successful ({time.time() - audio_start:.1f}s)\n")
             
-            # PHASE 3: Prepare valid segment-audio pairs
             print("🎬 PHASE 3: Preparing video rendering...")
             
             valid_pairs = []
@@ -115,7 +112,6 @@ class VideoOrchestrator:
             
             print(f"✓ Ready to render: {len(valid_pairs)} segments\n")
             
-            # PHASE 4: Render videos in BATCHES with AI animations
             print(f"🎥 PHASE 4: Rendering videos with AI animations (5 Mbps, normalized)...")
             video_start = time.time()
             
@@ -127,16 +123,14 @@ class VideoOrchestrator:
             if len(video_files) == 0:
                 raise Exception("No videos were successfully rendered")
             
-            # PHASE 5: Concatenate with optimized stream copy
-            print("🎞️  PHASE 5: Concatenating (optimized stream copy)...")
+            print("🎞️  PHASE 5: Concatenating with transitions + background music...")
             concat_start = time.time()
             
-            final_video_path = await self._concatenate_videos(video_files)
+            final_video_path = await self._concatenate_videos_with_transitions(video_files)
             
             concat_time = time.time() - concat_start
             print(f"✅ Concatenation complete ({concat_time:.1f}s)\n")
             
-            # PHASE 6: Upload to Cloudflare Stream (automatic HLS conversion)
             print("☁️  PHASE 6: Uploading to Cloudflare Stream...")
             upload_start = time.time()
             
@@ -148,16 +142,14 @@ class VideoOrchestrator:
             
             print(f"✅ Upload complete ({time.time() - upload_start:.1f}s)\n")
             
-            # Calculate actual duration from audio
             total_duration = sum(duration for _, _, duration in valid_pairs if duration > 0)
             if total_duration == 0:
-                total_duration = len(video_files) * 12  # Fallback estimate
+                total_duration = len(video_files) * 12
             
-            # Update database with Cloudflare Stream URLs
             self.supabase.table('video_generations').update({
                 'cloudflare_video_uid': cloudflare_uid,
-                'video_url': hls_url,  # Primary: HLS for adaptive streaming
-                'mp4_url': mp4_url,     # Backup: Direct MP4
+                'video_url': hls_url,
+                'mp4_url': mp4_url,
                 'generation_status': 'completed',
                 'duration_seconds': int(total_duration),
                 'generation_error': None
@@ -178,6 +170,7 @@ class VideoOrchestrator:
             print(f"   - Global CDN delivery (285+ cities)")
             print(f"   - Zero buffering guaranteed")
             print(f"   - Automatic quality switching")
+            print(f"   - Background music with transitions")
             print(f"{'='*70}\n")
             
             return {
@@ -203,7 +196,6 @@ class VideoOrchestrator:
             raise
     
     async def _generate_script_segments(self, prompt: str, category: str) -> List[Dict[str, Any]]:
-        """Generate script using CrewAI agent"""
         from video_script_agent import VideoScriptAgent
         
         agent = VideoScriptAgent()
@@ -215,8 +207,6 @@ class VideoOrchestrator:
         self,
         segments: List[Dict]
     ) -> List[Tuple[Optional[str], float]]:
-        """Generate audio for all segments in parallel with retry logic"""
-        
         audio_results = [(None, 0.0)] * len(segments)
         
         with ThreadPoolExecutor(max_workers=AUDIO_GENERATION_WORKERS) as executor:
@@ -248,8 +238,6 @@ class VideoOrchestrator:
         segment: Dict,
         max_retries: int = MAX_RETRY_ATTEMPTS
     ) -> Tuple[Optional[str], float]:
-        """Generate audio with retry logic, return (base64_audio, duration_seconds)"""
-        
         segment_index = segment['index']
         segment_text = segment['text']
         
@@ -274,10 +262,7 @@ class VideoOrchestrator:
                     audio_bytes = response.content
                     
                     if len(audio_bytes) > 1000:
-                        # Encode to base64
                         audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
-                        
-                        # Estimate duration from byte size
                         estimated_duration = len(audio_bytes) / 172000
                         
                         return (audio_b64, max(estimated_duration, 8.0))
@@ -298,29 +283,23 @@ class VideoOrchestrator:
         self,
         valid_pairs: List[Tuple[Dict, str, float]]
     ) -> List[str]:
-        """Render videos in batches with AI-generated animations"""
-        
         all_video_files = []
         total_segments = len(valid_pairs)
         
-        # Process in batches
         for batch_start in range(0, total_segments, RENDER_BATCH_SIZE):
             batch_end = min(batch_start + RENDER_BATCH_SIZE, total_segments)
             batch = valid_pairs[batch_start:batch_end]
             
             print(f"\n  📦 Batch {batch_start//RENDER_BATCH_SIZE + 1}: Segments {batch_start}-{batch_end-1}")
             
-            # Generate animations for this batch
             print(f"  🎨 Generating AI animations for batch...")
             batch_with_animations = await self._generate_batch_animations(batch)
             
-            # Render videos
             batch_videos = await self._render_video_batch(batch_with_animations)
             all_video_files.extend(batch_videos)
             
             print(f"  ✓ Batch complete: {len(batch_videos)}/{len(batch)} successful\n")
             
-            # Small delay between batches
             if batch_end < total_segments:
                 await asyncio.sleep(2)
         
@@ -330,8 +309,6 @@ class VideoOrchestrator:
         self,
         batch: List[Tuple[Dict, str, float]]
     ) -> List[Tuple[Dict, str, float, str]]:
-        """Generate AI animation code for each segment in batch"""
-        
         batch_with_animations = []
         
         for segment, audio_b64, duration in batch:
@@ -347,28 +324,73 @@ class VideoOrchestrator:
                     )
                 except Exception as e:
                     print(f"  ⚠️  Animation generation failed for segment {segment['index']}: {e}")
-                    animation_js = self.animation_agent._create_fallback_animation(
-                        segment['text'],
-                        segment.get('visual_hint', ''),
-                        segment['index']
-                    )
+                    animation_js = self._create_fallback_animation(segment, segment['index'])
             else:
-                animation_js = self.animation_agent._create_fallback_animation(
-                    segment['text'],
-                    segment.get('visual_hint', ''),
-                    segment['index']
-                )
+                animation_js = self._create_fallback_animation(segment, segment['index'])
             
             batch_with_animations.append((segment, audio_b64, duration, animation_js))
         
         return batch_with_animations
     
+    def _create_fallback_animation(self, segment: Dict, index: int) -> str:
+        text = segment.get('text', 'Educational Content')
+        
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Segment {index}</title>
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{ 
+  font-family: Arial, sans-serif;
+  width: 1920px; 
+  height: 1080px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}}
+.content {{
+  max-width: 1400px;
+  padding: 60px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  text-align: center;
+}}
+h1 {{
+  font-size: 4rem;
+  font-weight: 800;
+  color: white;
+  text-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}}
+</style>
+</head>
+<body>
+<div class="content">
+  <h1>Educational Video</h1>
+</div>
+<script>
+window.startRecording = function() {{
+  return new Promise((resolve) => {{
+    setTimeout(() => {{
+      window.recordingComplete = true;
+      resolve();
+    }}, 15000);
+  }});
+}};
+</script>
+</body>
+</html>"""
+    
     async def _render_video_batch(
         self,
         batch: List[Tuple[Dict, str, float, str]]
     ) -> List[str]:
-        """Render a batch of videos with AI-generated animations"""
-        
         video_files = []
         tasks = []
         
@@ -404,16 +426,10 @@ class VideoOrchestrator:
         
         return video_files
     
-    async def _concatenate_videos(self, video_files: List[str]) -> str:
-        """
-        Optimized video concatenation using stream copy.
-        With normalized encoding, this should succeed every time in <10 seconds.
-        """
-        
+    async def _concatenate_videos_with_transitions(self, video_files: List[str]) -> str:
         if not video_files:
             raise Exception("No video files to concatenate")
         
-        # Sort videos by segment index
         def get_index(path: str) -> int:
             import re
             match = re.search(r'segment_(\d+)_final', path)
@@ -421,100 +437,182 @@ class VideoOrchestrator:
         
         sorted_videos = sorted(video_files, key=get_index)
         
-        # Validate all files exist
         for video_path in sorted_videos:
             if not os.path.exists(video_path):
                 raise Exception(f"Video file missing: {video_path}")
             if os.path.getsize(video_path) < 10000:
                 raise Exception(f"Video file too small: {video_path}")
         
-        print(f"  📦 Concatenating {len(sorted_videos)} segments...")
+        print(f"  📦 Concatenating {len(sorted_videos)} segments with transitions...")
         
-        # Create concat list file
-        concat_file = '/tmp/concat_list.txt'
-        with open(concat_file, 'w') as f:
-            for video_path in sorted_videos:
-                # Use absolute paths for safety
-                abs_path = os.path.abspath(video_path)
-                f.write(f"file '{abs_path}'\n")
+        selected_bgm = random.choice(BACKGROUND_MUSIC_FILES)
+        bgm_path = f'/root/{selected_bgm}'
+        
+        if not os.path.exists(bgm_path):
+            print(f"  ⚠️  Background music not found: {bgm_path}, proceeding without BGM")
+            bgm_path = None
+        else:
+            print(f"  🎵 Selected background music: {selected_bgm}")
         
         output_path = '/tmp/final_video.mp4'
         
-        # Try stream copy (should work with normalized encoding)
-        print("  🚀 Attempting stream copy (normalized encoding)...")
-        
-        try:
-            result = subprocess.run([
-                'ffmpeg', '-y',
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', concat_file,
-                '-c', 'copy',              # Stream copy (no re-encoding)
-                '-movflags', '+faststart', # Streaming optimization
-                output_path
-            ], capture_output=True, text=True, timeout=30)  # Should be fast
+        if len(sorted_videos) == 1:
+            print("  ℹ️  Single video, adding background music only...")
             
-            if result.returncode == 0:
-                # Verify output
-                if os.path.exists(output_path) and os.path.getsize(output_path) > 100000:
-                    file_size_mb = os.path.getsize(output_path) / 1024 / 1024
-                    print(f"  ✅ Stream copy successful: {file_size_mb:.1f} MB")
+            if bgm_path:
+                try:
+                    bgm_volume = BGM_VOLUME / 100.0
                     
-                    # Cleanup
-                    os.remove(concat_file)
-                    for vp in sorted_videos:
-                        try:
-                            os.remove(vp)
-                        except:
-                            pass
+                    result = subprocess.run([
+                        'ffmpeg', '-y',
+                        '-i', sorted_videos[0],
+                        '-stream_loop', '-1',
+                        '-i', bgm_path,
+                        '-filter_complex',
+                        f'[1:a]volume={bgm_volume},afade=t=in:st=0:d=2,afade=t=out:st=8:d=2[bgm];'
+                        f'[0:a][bgm]amix=inputs=2:duration=first[aout]',
+                        '-map', '0:v',
+                        '-map', '[aout]',
+                        '-c:v', 'copy',
+                        '-c:a', 'aac',
+                        '-b:a', '192k',
+                        '-shortest',
+                        output_path
+                    ], capture_output=True, text=True, timeout=FFMPEG_TIMEOUT_SECONDS)
                     
-                    return output_path
-                else:
-                    print(f"  ⚠️  Output file invalid")
-            else:
-                print(f"  ⚠️  Stream copy failed: {result.stderr[:150]}")
-        except subprocess.TimeoutExpired:
-            print(f"  ⚠️  Stream copy timeout")
-        except Exception as e:
-            print(f"  ⚠️  Stream copy error: {e}")
+                    if result.returncode == 0 and os.path.exists(output_path):
+                        print(f"  ✅ Single video with BGM complete")
+                        os.remove(sorted_videos[0])
+                        return output_path
+                except Exception as e:
+                    print(f"  ⚠️  BGM mixing failed: {e}, using original video")
+            
+            import shutil
+            shutil.copy(sorted_videos[0], output_path)
+            os.remove(sorted_videos[0])
+            return output_path
         
-        # Fallback: Fast re-encode (shouldn't be needed with normalized encoding)
-        print("  ⚠️  Falling back to re-encode (this indicates encoding issue)...")
+        print(f"  🎬 Building transition filter chain...")
+        
+        transitions = []
+        for i in range(len(sorted_videos) - 1):
+            transition_type = random.choice(TRANSITION_TYPES)
+            transitions.append(transition_type)
+            print(f"     Transition {i}: {transition_type}")
+        
+        video_durations = []
+        for vp in sorted_videos:
+            result = subprocess.run([
+                'ffprobe', '-v', 'error',
+                '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                vp
+            ], capture_output=True, text=True, timeout=30)
+            
+            try:
+                duration = float(result.stdout.strip())
+                video_durations.append(duration)
+            except:
+                video_durations.append(12.0)
+        
+        filter_parts = []
+        for i in range(len(sorted_videos)):
+            filter_parts.append(f'[{i}:v]')
+        
+        current_label = filter_parts[0]
+        
+        offset = 0.0
+        for i in range(len(sorted_videos) - 1):
+            transition = transitions[i]
+            offset += video_durations[i] - TRANSITION_DURATION
+            
+            next_input = filter_parts[i + 1]
+            output_label = f'[v{i}]' if i < len(sorted_videos) - 2 else '[vout]'
+            
+            xfade_filter = f'{current_label}{next_input}xfade=transition={transition}:duration={TRANSITION_DURATION}:offset={offset}{output_label}'
+            filter_parts.append(xfade_filter)
+            
+            current_label = output_label
+        
+        video_filter = ';'.join(filter_parts[len(sorted_videos):])
+        
+        input_args = []
+        for vp in sorted_videos:
+            input_args.extend(['-i', vp])
+        
+        if bgm_path:
+            bgm_volume = BGM_VOLUME / 100.0
+            total_video_duration = sum(video_durations) - (len(sorted_videos) - 1) * TRANSITION_DURATION
+            
+            audio_filter_parts = []
+            for i in range(len(sorted_videos)):
+                audio_filter_parts.append(f'[{i}:a]')
+            
+            audio_concat = ''.join(audio_filter_parts) + f'concat=n={len(sorted_videos)}:v=0:a=1[main_audio];'
+            
+            bgm_filter = f'[{len(sorted_videos)}:a]volume={bgm_volume},afade=t=in:st=0:d=2,afade=t=out:st={total_video_duration-2}:d=2,aloop=loop=-1:size=2e9[bgm];'
+            
+            audio_mix = '[main_audio][bgm]amix=inputs=2:duration=first[aout]'
+            
+            full_audio_filter = audio_concat + bgm_filter + audio_mix
+            
+            full_filter = video_filter + ';' + full_audio_filter
+            
+            input_args.extend(['-stream_loop', '-1', '-i', bgm_path])
+            
+            map_args = ['-map', '[vout]', '-map', '[aout]']
+        else:
+            audio_concat_parts = []
+            for i in range(len(sorted_videos)):
+                audio_concat_parts.append(f'[{i}:a]')
+            
+            audio_concat = ''.join(audio_concat_parts) + f'concat=n={len(sorted_videos)}:v=0:a=1[aout]'
+            
+            full_filter = video_filter + ';' + audio_concat
+            
+            map_args = ['-map', '[vout]', '-map', '[aout]']
         
         try:
-            result = subprocess.run([
-                'ffmpeg', '-y',
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', concat_file,
+            cmd = [
+                'ffmpeg', '-y'
+            ] + input_args + [
+                '-filter_complex', full_filter
+            ] + map_args + [
                 '-c:v', 'libx264',
-                '-preset', 'veryfast',
+                '-preset', 'medium',
                 '-crf', '23',
                 '-b:v', '5000k',
                 '-maxrate', '5500k',
                 '-bufsize', '10000k',
+                '-pix_fmt', 'yuv420p',
                 '-movflags', '+faststart',
                 '-c:a', 'aac',
-                '-b:a', '128k',
+                '-b:a', '192k',
+                '-ar', '48000',
                 output_path
-            ], capture_output=True, text=True, timeout=180)
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=FFMPEG_TIMEOUT_SECONDS * 2
+            )
             
             if result.returncode != 0:
-                raise Exception(f"Re-encode failed: {result.stderr[:200]}")
+                raise Exception(f"FFmpeg failed: {result.stderr[:300]}")
             
             if not os.path.exists(output_path) or os.path.getsize(output_path) < 100000:
                 raise Exception("Output file invalid")
             
             file_size_mb = os.path.getsize(output_path) / 1024 / 1024
-            print(f"  ✅ Re-encode successful: {file_size_mb:.1f} MB")
+            print(f"  ✅ Concatenation with transitions + BGM complete: {file_size_mb:.1f} MB")
             
         except subprocess.TimeoutExpired:
-            raise Exception("Re-encode timeout")
+            raise Exception(f"Concatenation timeout after {FFMPEG_TIMEOUT_SECONDS * 2}s")
         except Exception as e:
-            raise Exception(f"Re-encode error: {e}")
+            raise Exception(f"Concatenation error: {e}")
         
-        # Cleanup
-        os.remove(concat_file)
         for vp in sorted_videos:
             try:
                 os.remove(vp)
@@ -529,25 +627,16 @@ class VideoOrchestrator:
         video_id: str, 
         title: str
     ) -> Tuple[str, str, str]:
-        """
-        Upload final video to Cloudflare Stream
-        
-        Returns:
-            (cloudflare_video_uid, hls_url, mp4_url)
-        """
-        
         from cloudflare_stream_uploader import CloudflareStreamUploader
         
         uploader = CloudflareStreamUploader()
         
-        # Upload to Cloudflare Stream (automatically converts to HLS with multiple qualities)
         cloudflare_uid, hls_url, mp4_url = uploader.upload_video(
             video_path=video_path,
             video_id=video_id,
             title=title
         )
         
-        # Clean up local file
         try:
             os.remove(video_path)
         except:
@@ -556,8 +645,6 @@ class VideoOrchestrator:
         return cloudflare_uid, hls_url, mp4_url
     
     async def _deduct_tokens(self, user_id: str, video_id: str, segment_count: int):
-        """Deduct tokens for video generation"""
-        
         token_cost = segment_count * 300
         try:
             self.supabase.rpc('deduct_tokens_for_video', {
@@ -570,8 +657,6 @@ class VideoOrchestrator:
             print(f"⚠️  Token deduction failed: {e}")
     
     def _update_status(self, video_id: str, status: str, error: str = None):
-        """Update video generation status"""
-        
         update_data = {'generation_status': status}
         if error:
             update_data['generation_error'] = error
